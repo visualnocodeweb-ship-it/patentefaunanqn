@@ -1,0 +1,12 @@
+# Entorno Virtual
+venv/
+*.pyc
+__pycache__/
+
+# Archivos de IDE
+.idea/
+.vscode/
+.claude.json
+
+# Imágenes generadas
+imagenes_extraidas/
