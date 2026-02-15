@@ -270,9 +270,53 @@ def search_by_plate_text(plate_text, limit=50):
         if conn:
             conn.close()
 
-def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_filter=None, type_filter=None, start_date_filter=None, end_date_filter=None):
+def _validate_date(value):
+    """Validate and return an ISO date/datetime string, or None if invalid."""
+    if not value:
+        return None
+    try:
+        datetime.datetime.fromisoformat(value)
+        return value
+    except (ValueError, TypeError):
+        return None
+
+def _build_where_clause(search_term=None, brand_filter=None, type_filter=None,
+                        start_date_filter=None, end_date_filter=None, min_confidence_filter=None):
+    """Builds a shared WHERE clause and params list for detection_events queries."""
+    conditions = []
+    params = []
+    if search_term:
+        conditions.append("camera_plate_text ILIKE %s")
+        params.append(f'%{search_term}%')
+    if brand_filter:
+        conditions.append("vehicle_brand ILIKE %s")
+        params.append(f'%{brand_filter}%')
+    if type_filter:
+        conditions.append("vehicle_type ILIKE %s")
+        params.append(f'%{type_filter}%')
+    start_date_filter = _validate_date(start_date_filter)
+    if start_date_filter:
+        conditions.append("created_at >= %s")
+        params.append(start_date_filter)
+    end_date_filter = _validate_date(end_date_filter)
+    if end_date_filter:
+        conditions.append("created_at <= %s")
+        params.append(end_date_filter)
+    if min_confidence_filter is not None:
+        min_confidence_filter = max(0.0, min(1.0, float(min_confidence_filter)))
+        conditions.append("camera_confidence >= %s")
+        params.append(min_confidence_filter)
+    clause = ""
+    if conditions:
+        clause = " WHERE " + " AND ".join(conditions)
+    return clause, params
+
+def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_filter=None,
+                                type_filter=None, start_date_filter=None, end_date_filter=None,
+                                min_confidence_filter=None):
     """
     Recupera todos los datos de patente de detection_events con paginación, búsqueda y filtros.
+    Incluye conteo de avistamientos por patente (sightings) via window function.
     Retorna una tupla (lista_de_patentes, total_registros).
     """
     conn = None
@@ -283,8 +327,16 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
         cur = conn.cursor()
 
         offset = (page - 1) * page_size
+        where_clause, query_params = _build_where_clause(
+            search_term, brand_filter, type_filter,
+            start_date_filter, end_date_filter, min_confidence_filter
+        )
 
-        # Consulta base para patentes
+        # Consulta de conteo
+        cur.execute("SELECT COUNT(*) FROM detection_events" + where_clause, query_params)
+        total_count = cur.fetchone()[0]
+
+        # Fetch page of patents (no window function)
         patents_query = """
         SELECT
             id AS event_id,
@@ -296,63 +348,34 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
             created_at
         FROM
             detection_events
-        """
+        """ + where_clause + " ORDER BY created_at DESC LIMIT %s OFFSET %s;"
 
-        # Consulta base para el conteo total
-        count_query = """
-        SELECT COUNT(*)
-        FROM
-            detection_events
-        """
+        page_params = list(query_params) + [page_size, offset]
+        cur.execute(patents_query, page_params)
 
-        # Construir cláusula WHERE dinámicamente
-        where_conditions = []
-        query_params = []
-
-        if search_term:
-            where_conditions.append("camera_plate_text ILIKE %s")
-            query_params.append(f'%{search_term}%')
-        
-        if brand_filter:
-            where_conditions.append("vehicle_brand ILIKE %s")
-            query_params.append(f'%{brand_filter}%')
-
-        if type_filter:
-            where_conditions.append("vehicle_type ILIKE %s")
-            query_params.append(f'%{type_filter}%')
-        
-        if start_date_filter:
-            where_conditions.append("created_at >= %s")
-            # Convertir a datetime si es necesario, o asegurarse de que el frontend pase el formato correcto
-            query_params.append(start_date_filter)
-
-        if end_date_filter:
-            where_conditions.append("created_at <= %s")
-            # Convertir a datetime si es necesario, o asegurarse de que el frontend pase el formato correcto
-            query_params.append(end_date_filter)
-
-        where_clause = ""
-        if where_conditions:
-            where_clause = " WHERE " + " AND ".join(where_conditions)
-        
-        # Ejecutar consulta de conteo
-        cur.execute(count_query + where_clause, query_params)
-        total_count = cur.fetchone()[0]
-
-        # Ejecutar consulta de patentes con paginación
-        patents_query += where_clause + " ORDER BY created_at DESC LIMIT %s OFFSET %s;"
-        # Añadir parámetros de paginación al final de los parámetros de filtro
-        query_params.extend([page_size, offset])
-        
-        cur.execute(patents_query, query_params)
-        
         columns = [desc[0] for desc in cur.description]
         for row in cur.fetchall():
             row_dict = dict(zip(columns, row))
-            if 'vehicle_brand' in row_dict: # Asegurarse de que el campo exista
+            if 'vehicle_brand' in row_dict:
                 row_dict['vehicle_brand'] = normalize_vehicle_brand(row_dict['vehicle_brand'])
             patents.append(row_dict)
-        
+
+        # Per-page sightings: count occurrences of plates on this page
+        plate_texts = list({p['plate_text'] for p in patents if p.get('plate_text')})
+        sightings_map = {}
+        if plate_texts:
+            placeholders = ','.join(['%s'] * len(plate_texts))
+            sightings_query = (
+                "SELECT camera_plate_text, COUNT(*) FROM detection_events"
+                + " WHERE camera_plate_text IN (" + placeholders + ")"
+                + " GROUP BY camera_plate_text"
+            )
+            cur.execute(sightings_query, plate_texts)
+            for plate, count in cur.fetchall():
+                sightings_map[plate] = count
+        for p in patents:
+            p['sightings'] = sightings_map.get(p.get('plate_text'), 0)
+
         cur.close()
         return patents, total_count
 
@@ -362,6 +385,109 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
     except Exception as e:
         logger.error("Un error inesperado ocurrió al obtener patentes paginadas: %s", e)
         return [], 0
+    finally:
+        if conn:
+            conn.close()
+
+def fetch_stats(start_date_filter=None, end_date_filter=None):
+    """
+    Recupera estadísticas agregadas de detection_events.
+    Retorna un diccionario con métricas clave.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        where_clause, params = _build_where_clause(
+            start_date_filter=start_date_filter,
+            end_date_filter=end_date_filter
+        )
+
+        query = """
+        SELECT
+            COUNT(*) AS total,
+            COUNT(DISTINCT camera_plate_text) AS unique_plates,
+            COALESCE(AVG(camera_confidence), 0) AS avg_confidence,
+            COUNT(*) FILTER (WHERE camera_confidence < 0.7) AS low_confidence_count,
+            COUNT(*) FILTER (WHERE camera_confidence >= 0.9) AS high_conf,
+            COUNT(*) FILTER (WHERE camera_confidence >= 0.7 AND camera_confidence < 0.9) AS mid_conf,
+            MAX(created_at) AS last_detection_at,
+            MIN(created_at) AS first_detection_at
+        FROM detection_events
+        """ + where_clause + ";"
+
+        cur.execute(query, params)
+        row = cur.fetchone()
+        columns = [desc[0] for desc in cur.description]
+        result = dict(zip(columns, row))
+
+        # Compute detections per hour
+        if result['first_detection_at'] and result['last_detection_at'] and result['total'] > 0:
+            span = result['last_detection_at'] - result['first_detection_at']
+            hours = span.total_seconds() / 3600
+            result['detections_per_hour'] = round(result['total'] / max(hours, 1), 1)
+        else:
+            result['detections_per_hour'] = 0
+
+        # Serialize datetimes
+        for key in ('last_detection_at', 'first_detection_at'):
+            if result[key]:
+                result[key] = result[key].isoformat()
+
+        result['avg_confidence'] = round(float(result['avg_confidence']), 4)
+        cur.close()
+        return result
+
+    except (psycopg2.Error, Exception) as e:
+        logger.error("Error al obtener estadísticas: %s", e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+def fetch_recent_thumbnails(limit=8):
+    """
+    Fetches the most recent vehicle_picture thumbnails.
+    Returns base64-encoded image data filtered server-side by image_type.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        query = """
+        SELECT
+            de.id AS event_id,
+            ei.image_data,
+            de.camera_plate_text AS plate_text
+        FROM
+            detection_events de
+        JOIN
+            event_images ei ON de.id = ei.event_id
+        WHERE
+            ei.image_type = 'vehicle_picture'
+        ORDER BY
+            ei.created_at DESC
+        LIMIT %s;
+        """
+        cur.execute(query, (limit,))
+        results = []
+        for row in cur.fetchall():
+            event_id_val, image_data, plate_text = row
+            if image_data:
+                results.append({
+                    'event_id': event_id_val,
+                    'image_data': base64.b64encode(image_data).decode('utf-8'),
+                    'plate_text': plate_text
+                })
+        cur.close()
+        return results
+    except psycopg2.Error as e:
+        logger.error("Error fetching recent thumbnails: %s", e)
+        return []
+    except Exception as e:
+        logger.error("Unexpected error fetching recent thumbnails: %s", e)
+        return []
     finally:
         if conn:
             conn.close()
