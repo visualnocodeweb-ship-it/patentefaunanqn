@@ -1,8 +1,15 @@
-import base64
+import logging
+import os
 from flask import Flask, jsonify, request, render_template
+from flask_cors import CORS
+from dotenv import load_dotenv
 import db_utils
 
+load_dotenv()
+logging.basicConfig(level=logging.INFO)
+
 app = Flask(__name__)
+CORS(app)
 
 @app.route('/')
 def index():
@@ -11,10 +18,8 @@ def index():
 
 @app.route('/api/latest_images')
 def latest_images():
-    print("DEBUG: app.py - /api/latest_images route hit.")
     """Fetches the latest images and associated plate detection data."""
     images = db_utils.fetch_latest_images()
-    print("DEBUG: Datos de imágenes fetched:", images) # Línea de depuración añadida
     return jsonify(images)
 
 @app.route('/api/search_plate', methods=['GET'])
@@ -62,13 +67,25 @@ def all_patents():
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 10, type=int)
     search_term = request.args.get('search_term', None, type=str)
+    brand_filter = request.args.get('brand_filter', None, type=str)
+    type_filter = request.args.get('type_filter', None, type=str)
+    start_date_filter = request.args.get('start_date_filter', None, type=str)
+    end_date_filter = request.args.get('end_date_filter', None, type=str)
 
     if page < 1:
         page = 1
     if page_size < 1:
         page_size = 10
+    if page_size > 100:
+        page_size = 100
 
-    patents, total_count = db_utils.fetch_all_patents_paginated(page, page_size, search_term)
+    patents, total_count = db_utils.fetch_all_patents_paginated(
+        page, page_size, search_term,
+        brand_filter=brand_filter,
+        type_filter=type_filter,
+        start_date_filter=start_date_filter,
+        end_date_filter=end_date_filter
+    )
     
     return jsonify({
         'patents': patents,
@@ -88,4 +105,7 @@ def get_image(event_id):
     return jsonify({"error": "Image not found for this event_id"}), 404
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(
+        debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true',
+        host='127.0.0.1'
+    )
