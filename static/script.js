@@ -1,3 +1,13 @@
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const latestImagesContainer = document.getElementById('latest-images');
     const searchForm = document.getElementById('search-form');
@@ -52,11 +62,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const details = document.createElement('div');
         details.className = 'image-details';
         details.innerHTML = `
-            <p><strong>Patente:</strong> ${item.plate_text || 'No detectada'}</p>
-            <p><strong>Tipo:</strong> ${item.image_type || 'N/A'}</p>
+            <p><strong>Patente:</strong> ${escapeHtml(item.plate_text) || 'No detectada'}</p>
+            <p><strong>Tipo:</strong> ${escapeHtml(item.image_type) || 'N/A'}</p>
             <p><strong>Fecha:</strong> ${new Date(item.created_at).toLocaleString()}</p>
             <p><strong>Confianza:</strong> ${item.plate_confidence ? (item.plate_confidence * 100).toFixed(2) + '%' : 'N/A'}</p>
-            <p><strong>Archivo:</strong> ${item.file_name || 'N/A'}</p>
+            <p><strong>Archivo:</strong> ${escapeHtml(item.file_name) || 'N/A'}</p>
         `;
         imageItem.appendChild(details);
 
@@ -82,13 +92,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function createTableRow(item) {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${item.plate_text || 'No detectada'}</td>
-            <td>${item.vehicle_brand || 'N/A'}</td>
-            <td>${item.vehicle_color || 'N/A'}</td>
-            <td>${item.vehicle_type || 'N/A'}</td>
+            <td>${escapeHtml(item.plate_text) || 'No detectada'}</td>
+            <td>${escapeHtml(item.vehicle_brand) || 'N/A'}</td>
+            <td>${escapeHtml(item.vehicle_color) || 'N/A'}</td>
+            <td>${escapeHtml(item.vehicle_type) || 'N/A'}</td>
             <td>${item.plate_confidence ? (item.plate_confidence * 100).toFixed(2) + '%' : 'N/A'}</td>
             <td>${new Date(item.created_at).toLocaleString()}</td>
-            <td><button data-event-id="${item.event_id}" class="view-image-button">Ver Imagen</button></td>
+            <td><button data-event-id="${escapeHtml(item.event_id)}" class="view-image-button">Ver Imagen</button></td>
         `;
         return row;
     }
@@ -149,7 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Fetch and display latest images on load (card view)
     async function fetchLatestImages() {
-        console.log('fetchLatestImages está siendo llamada.');
         try {
             const response = await fetch('/api/latest_images');
             const data = await response.json();
@@ -309,7 +318,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     const imageData = await response.json();
                     if (imageData && imageData.image_data) {
-                        modalImage.src = `data:image/jpeg;base64,${imageData.image_data}`; // Asumiendo JPEG por ahora
+                        const mimeType = imageData.image_type || 'image/jpeg';
+                        modalImage.src = `data:${mimeType};base64,${imageData.image_data}`;
                         imageModal.style.display = 'flex'; // Mostrar el modal
                     } else {
                         alert('No se encontró imagen para este evento.');
