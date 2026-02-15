@@ -99,9 +99,9 @@ def get_image(event_id):
     """
     Fetches image data (base64) and type for a given event_id.
     """
-    image_data = db_utils.fetch_image_by_event_id(event_id)
-    if image_data:
-        return jsonify(image_data)
+    images = db_utils.fetch_image_by_event_id(event_id)
+    if images:
+        return jsonify({"images": images})
     return jsonify({"error": "Image not found for this event_id"}), 404
 
 if __name__ == '__main__':

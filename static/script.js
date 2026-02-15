@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchForm = document.getElementById('search-form');
     const plateInput = document.getElementById('plate-input');
     const searchResultsContainer = document.getElementById('search-results');
-    
+
     // --- Referencias para la nueva tabla de patentes y paginación ---
     const patentTableBody = document.querySelector('#patent-table tbody');
     const totalPatentsCountSpan = document.getElementById('total-patents-count');
@@ -36,18 +36,53 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Referencias para el modal de imagen ---
     const imageModal = document.getElementById('imageModal');
     const modalImage = document.getElementById('modalImage');
+    const modalError = document.getElementById('modal-error');
     const closeButton = document.querySelector('.close-button');
 
-
-    let currentPage = 1;
     const pageSize = 10;
-    // Variables de estado para los filtros
-    let currentPatentFilter = ''; // Renombrado de currentSearchTerm para mayor claridad
-    let currentBrandFilter = '';
-    let currentTypeFilter = '';
-    let currentStartDateFilter = '';
-    let currentEndDateFilter = '';
     let totalPages = 0;
+
+    // --- URL state management ---
+    function getFiltersFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        return {
+            page: parseInt(params.get('page')) || 1,
+            patent: params.get('search_term') || '',
+            brand: params.get('brand_filter') || '',
+            type: params.get('type_filter') || '',
+            startDate: params.get('start_date_filter') || '',
+            endDate: params.get('end_date_filter') || ''
+        };
+    }
+
+    function pushFiltersToURL(filters) {
+        const params = new URLSearchParams();
+        if (filters.page > 1) params.set('page', filters.page);
+        if (filters.patent) params.set('search_term', filters.patent);
+        if (filters.brand) params.set('brand_filter', filters.brand);
+        if (filters.type) params.set('type_filter', filters.type);
+        if (filters.startDate) params.set('start_date_filter', filters.startDate);
+        if (filters.endDate) params.set('end_date_filter', filters.endDate);
+        const qs = params.toString();
+        const newUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+        history.replaceState(null, '', newUrl);
+    }
+
+    // Initialize filter state from URL
+    let urlState = getFiltersFromURL();
+    let currentPage = urlState.page;
+    let currentPatentFilter = urlState.patent;
+    let currentBrandFilter = urlState.brand;
+    let currentTypeFilter = urlState.type;
+    let currentStartDateFilter = urlState.startDate;
+    let currentEndDateFilter = urlState.endDate;
+
+    // Populate inputs from URL state
+    patentTableSearchInput.value = currentPatentFilter;
+    patentTableSearchBrandInput.value = currentBrandFilter;
+    patentTableSearchTypeInput.value = currentTypeFilter;
+    patentTableSearchStartDateInput.value = currentStartDateFilter;
+    patentTableSearchEndDateInput.value = currentEndDateFilter;
 
     // Function to create and display an image item (card view)
     function createImageItem(item) {
@@ -57,6 +92,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const img = document.createElement('img');
         img.src = `data:image/jpeg;base64,${item.image_data}`;
         img.alt = `Imagen ${item.id}`;
+        img.width = 250;
+        img.height = 200;
         imageItem.appendChild(img);
 
         const details = document.createElement('div');
@@ -124,10 +161,21 @@ document.addEventListener('DOMContentLoaded', () => {
         currentPageSpan.textContent = currentPage;
     }
 
+    function syncURLState() {
+        pushFiltersToURL({
+            page: currentPage,
+            patent: currentPatentFilter,
+            brand: currentBrandFilter,
+            type: currentTypeFilter,
+            startDate: currentStartDateFilter,
+            endDate: currentEndDateFilter
+        });
+    }
+
     async function fetchPatentsTableData() {
-        patentTableBody.innerHTML = '<tr><td colspan="7">Cargando patentes...</td></tr>';
+        patentTableBody.innerHTML = '<tr><td colspan="7">Cargando patentes\u2026</td></tr>';
         let url = `/api/all_patents?page=${currentPage}&page_size=${pageSize}`;
-        if (currentPatentFilter) { // Usar currentPatentFilter
+        if (currentPatentFilter) {
             url += `&search_term=${encodeURIComponent(currentPatentFilter)}`;
         }
         if (currentBrandFilter) {
@@ -143,10 +191,12 @@ document.addEventListener('DOMContentLoaded', () => {
             url += `&end_date_filter=${encodeURIComponent(currentEndDateFilter)}`;
         }
 
+        syncURLState();
+
         try {
             const response = await fetch(url);
             const data = await response.json();
-            
+
             displayPatentTableResults(data.patents);
             totalPatentsCountSpan.textContent = data.total_count;
             totalPages = Math.ceil(data.total_count / pageSize);
@@ -175,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const plate = plateInput.value.trim();
         if (plate) {
             try {
-                searchResultsContainer.innerHTML = '<p class="no-results">Buscando...</p>';
+                searchResultsContainer.innerHTML = '<p class="no-results">Buscando\u2026</p>';
                 const response = await fetch(`/api/search_plate?plate=${encodeURIComponent(plate)}`);
                 const data = await response.json();
                 displayCardResults(searchResultsContainer, data);
@@ -202,9 +252,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const startDate = startDateInput.value;
         const startTime = startTimeInput.value;
-        const endDate = endDateInput.value; 
+        const endDate = endDateInput.value;
         const endTime = endTimeInput.value;
-
 
         if (!startDate || !startTime || !endDate || !endTime) {
             datetimeSearchResultsContainer.innerHTML = '<p class="no-results">Por favor, selecciona fecha y hora de inicio y fin.</p>';
@@ -215,10 +264,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const endDatetime = `${endDate}T${endTime}:00`;
 
         try {
-            datetimeSearchResultsContainer.innerHTML = '<p class="no-results">Buscando por fecha y hora...</p>';
+            datetimeSearchResultsContainer.innerHTML = '<p class="no-results">Buscando por fecha y hora\u2026</p>';
             const response = await fetch(`/api/images_by_datetime?start_datetime=${encodeURIComponent(startDatetime)}&end_datetime=${encodeURIComponent(endDatetime)}`);
             const data = await response.json();
-            
+
             displayCardResults(datetimeSearchResultsContainer, data);
         } catch (error) {
             console.error('Error searching by datetime range:', error);
@@ -227,29 +276,28 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Event Listeners para la paginación y búsqueda de la tabla de patentes ---
-    // Listeners para los botones de búsqueda individuales
     searchPatentButton.addEventListener('click', () => {
-        currentPatentFilter = patentTableSearchInput.value.trim(); // Actualiza solo el filtro de patente
-        currentPage = 1; 
+        currentPatentFilter = patentTableSearchInput.value.trim();
+        currentPage = 1;
         fetchPatentsTableData();
     });
     searchBrandButton.addEventListener('click', () => {
-        currentBrandFilter = patentTableSearchBrandInput.value.trim(); // Actualiza solo el filtro de marca
+        currentBrandFilter = patentTableSearchBrandInput.value.trim();
         currentPage = 1;
         fetchPatentsTableData();
     });
     searchTypeButton.addEventListener('click', () => {
-        currentTypeFilter = patentTableSearchTypeInput.value.trim(); // Actualiza solo el filtro de tipo
+        currentTypeFilter = patentTableSearchTypeInput.value.trim();
         currentPage = 1;
         fetchPatentsTableData();
     });
     searchDateRangeButton.addEventListener('click', () => {
-        currentStartDateFilter = patentTableSearchStartDateInput.value; // Actualiza solo los filtros de fecha
+        currentStartDateFilter = patentTableSearchStartDateInput.value;
         currentEndDateFilter = patentTableSearchEndDateInput.value;
         currentPage = 1;
         fetchPatentsTableData();
     });
-    applyAllFiltersButton.addEventListener('click', () => { // Botón general que aplica todos los filtros
+    applyAllFiltersButton.addEventListener('click', () => {
         currentPatentFilter = patentTableSearchInput.value.trim();
         currentBrandFilter = patentTableSearchBrandInput.value.trim();
         currentTypeFilter = patentTableSearchTypeInput.value.trim();
@@ -263,34 +311,33 @@ document.addEventListener('DOMContentLoaded', () => {
     patentTableSearchInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
             event.preventDefault();
-            searchPatentButton.click(); // Dispara la búsqueda individual de patente
+            searchPatentButton.click();
         }
     });
     patentTableSearchBrandInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
             event.preventDefault();
-            searchBrandButton.click(); // Dispara la búsqueda individual de marca
+            searchBrandButton.click();
         }
     });
     patentTableSearchTypeInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
             event.preventDefault();
-            searchTypeButton.click(); // Dispara la búsqueda individual de tipo
+            searchTypeButton.click();
         }
     });
     patentTableSearchStartDateInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
             event.preventDefault();
-            searchDateRangeButton.click(); // Dispara la búsqueda individual de fecha
+            searchDateRangeButton.click();
         }
     });
     patentTableSearchEndDateInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
             event.preventDefault();
-            searchDateRangeButton.click(); // Dispara la búsqueda individual de fecha
+            searchDateRangeButton.click();
         }
     });
-
 
     prevPageButton.addEventListener('click', () => {
         if (currentPage > 1) {
@@ -306,53 +353,125 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- Carousel references ---
+    const carouselCounter = document.getElementById('carousel-counter');
+    const carouselCaption = document.getElementById('carousel-caption');
+    const carouselPrev = document.querySelector('.carousel-prev');
+    const carouselNext = document.querySelector('.carousel-next');
+
+    const modalSpinner = document.getElementById('modal-spinner');
+
+    let carouselImages = [];
+    let carouselIndex = 0;
+
     // --- Lógica del modal de imagen ---
+    function showModalError(msg) {
+        modalError.textContent = msg;
+        modalError.hidden = false;
+        modalImage.style.display = 'none';
+        carouselCounter.textContent = '';
+        carouselCaption.textContent = '';
+        carouselPrev.style.display = 'none';
+        carouselNext.style.display = 'none';
+    }
+
+    function hideModalError() {
+        modalError.textContent = '';
+        modalError.hidden = true;
+        modalImage.style.display = 'block';
+    }
+
+    function showSlide(index) {
+        if (carouselImages.length === 0) return;
+        carouselIndex = ((index % carouselImages.length) + carouselImages.length) % carouselImages.length;
+        const img = carouselImages[carouselIndex];
+        modalImage.src = `data:image/jpeg;base64,${img.image_data}`;
+        carouselCounter.textContent = `${carouselIndex + 1} / ${carouselImages.length}`;
+        carouselCaption.textContent = img.image_type || '';
+        const showNav = carouselImages.length > 1;
+        carouselPrev.style.display = showNav ? '' : 'none';
+        carouselNext.style.display = showNav ? '' : 'none';
+    }
+
+    carouselPrev.addEventListener('click', () => showSlide(carouselIndex - 1));
+    carouselNext.addEventListener('click', () => showSlide(carouselIndex + 1));
+
+    function showSpinner() {
+        modalSpinner.hidden = false;
+        modalImage.style.display = 'none';
+        carouselPrev.style.display = 'none';
+        carouselNext.style.display = 'none';
+        carouselCounter.textContent = '';
+        carouselCaption.textContent = '';
+    }
+
+    function hideSpinner() {
+        modalSpinner.hidden = true;
+    }
+
     patentTableBody.addEventListener('click', async (event) => {
         if (event.target.classList.contains('view-image-button')) {
             const eventId = event.target.dataset.eventId;
             if (eventId) {
+                hideModalError();
+                showSpinner();
+                imageModal.style.display = 'flex';
                 try {
                     const response = await fetch(`/api/image/${eventId}`);
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
-                    const imageData = await response.json();
-                    if (imageData && imageData.image_data) {
-                        const mimeType = imageData.image_type || 'image/jpeg';
-                        modalImage.src = `data:${mimeType};base64,${imageData.image_data}`;
-                        imageModal.style.display = 'flex'; // Mostrar el modal
+                    const data = await response.json();
+                    hideSpinner();
+                    if (data && data.images && data.images.length > 0) {
+                        hideModalError();
+                        carouselImages = data.images;
+                        showSlide(0);
                     } else {
-                        alert('No se encontró imagen para este evento.');
+                        carouselImages = [];
+                        showModalError('No se encontró imagen para este evento.');
                     }
                 } catch (error) {
                     console.error('Error al obtener la imagen:', error);
-                    alert('Error al cargar la imagen.');
+                    hideSpinner();
+                    carouselImages = [];
+                    showModalError('Error al cargar la imagen.');
                 }
             }
         }
     });
 
-    closeButton.addEventListener('click', () => {
+    function closeModal() {
         imageModal.style.display = 'none';
-        modalImage.src = ''; // Limpiar la imagen del modal
-    });
+        modalImage.src = '';
+        carouselImages = [];
+        carouselIndex = 0;
+        carouselCounter.textContent = '';
+        carouselCaption.textContent = '';
+        hideModalError();
+    }
+
+    closeButton.addEventListener('click', closeModal);
 
     window.addEventListener('click', (event) => {
         if (event.target === imageModal) {
-            imageModal.style.display = 'none';
-            modalImage.src = '';
+            closeModal();
         }
     });
 
     document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-            imageModal.style.display = 'none';
-            modalImage.src = '';
+        if (imageModal.style.display === 'flex') {
+            if (event.key === 'Escape') {
+                closeModal();
+            } else if (event.key === 'ArrowLeft') {
+                showSlide(carouselIndex - 1);
+            } else if (event.key === 'ArrowRight') {
+                showSlide(carouselIndex + 1);
+            }
         }
     });
 
-
     // Initial loads
-    fetchLatestImages(); // Carga las últimas imágenes (vista de tarjetas)
-    fetchPatentsTableData(); // Carga los datos de la tabla de patentes
+    fetchLatestImages();
+    fetchPatentsTableData();
 });

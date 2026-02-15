@@ -6,6 +6,34 @@ body {
     color: #333;
 }
 
+/* Skip link */
+.skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    padding: 8px 16px;
+    background: #0056b3;
+    color: #fff;
+    z-index: 100;
+    font-size: 14px;
+}
+.skip-link:focus {
+    left: 0;
+}
+
+/* Visually hidden but accessible */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 .container {
     max-width: 1200px;
     margin: 0 auto;
@@ -18,6 +46,7 @@ body {
 h1, h2 {
     color: #0056b3;
     text-align: center;
+    text-wrap: balance;
 }
 
 .search-section, .latest-images-section, #patent-table-section {
@@ -49,6 +78,7 @@ h1, h2 {
     border-radius: 0 4px 4px 0;
     cursor: pointer;
     font-size: 16px;
+    touch-action: manipulation;
 }
 
 .search-section button:hover {
@@ -75,7 +105,7 @@ h1, h2 {
     height: 200px;
     object-fit: cover;
     display: block;
-    background-color: #eee; /* Placeholder background */
+    background-color: #eee;
 }
 
 .image-details {
@@ -116,6 +146,12 @@ h1, h2 {
     cursor: pointer;
 }
 
+/* Tabular nums for confidence and date columns */
+#patent-table td:nth-child(5),
+#patent-table td:nth-child(6) {
+    font-variant-numeric: tabular-nums;
+}
+
 #patent-table tr:nth-child(even) {
     background-color: #f2f2f2;
 }
@@ -127,15 +163,15 @@ h1, h2 {
 /* Styles for table controls */
 .table-controls {
     display: flex;
-    flex-wrap: wrap; /* Permite que los elementos se envuelvan a la siguiente línea */
-    gap: 10px; /* Espacio entre los grupos de filtros */
+    flex-wrap: wrap;
+    gap: 10px;
     margin-bottom: 20px;
-    align-items: flex-end; /* Alinea los elementos en la parte inferior */
+    align-items: flex-end;
 }
 
 .table-controls .filter-group {
     display: flex;
-    align-items: center; /* Alinea verticalmente los inputs y botones */
+    align-items: center;
     gap: 5px;
 }
 
@@ -149,13 +185,14 @@ h1, h2 {
 
 .table-controls button {
     padding: 8px 12px;
-    background-color: #28a745; /* Color verde para botones de búsqueda */
+    background-color: #28a745;
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
-    white-space: nowrap; /* Evita que el texto del botón se rompa */
+    white-space: nowrap;
+    touch-action: manipulation;
 }
 
 .table-controls button:hover {
@@ -163,7 +200,8 @@ h1, h2 {
 }
 
 #apply-all-filters-button {
-    background-color: #007bff; /* Color azul para el botón principal */
+    background-color: #007bff;
+    touch-action: manipulation;
 }
 
 #apply-all-filters-button:hover {
@@ -171,8 +209,8 @@ h1, h2 {
 }
 
 
-/* Ajuste para el colpan de la tabla */
-#patent-table tbody tr td[colspan="7"] { /* Cambiado de 5 a 7 */
+/* Ajuste para el colspan de la tabla */
+#patent-table tbody tr td[colspan="7"] {
     text-align: center;
     font-style: italic;
     color: #888;
@@ -180,17 +218,18 @@ h1, h2 {
 
 /* Modal styles */
 .modal {
-    display: none; /* Hidden by default */
-    position: fixed; /* Stay in place */
-    z-index: 1; /* Sit on top */
+    display: none;
+    position: fixed;
+    z-index: 1;
     left: 0;
     top: 0;
-    width: 100%; /* Full width */
-    height: 100%; /* Full height */
-    overflow: auto; /* Enable scroll if needed */
-    background-color: rgba(0,0,0,0.8); /* Black w/ opacity */
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.8);
     justify-content: center;
     align-items: center;
+    overscroll-behavior: contain;
 }
 
 .modal-content {
@@ -212,20 +251,127 @@ h1, h2 {
     margin-top: 10px;
 }
 
+.modal-error {
+    color: #c00;
+    font-size: 14px;
+    margin-top: 10px;
+}
+
 .close-button {
     color: #aaa;
     position: absolute;
     top: 10px;
-    right: 25px;
-    font-size: 35px;
+    right: 15px;
+    font-size: 28px;
     font-weight: bold;
     cursor: pointer;
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    line-height: 1;
+    touch-action: manipulation;
 }
 
 .close-button:hover,
-.close-button:focus {
+.close-button:focus-visible {
     color: #000;
-    text-decoration: none;
-    cursor: pointer;
 }
 
+/* Spinner */
+.modal-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #ddd;
+    border-top-color: #007bff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 40px auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Carousel styles */
+.carousel-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    border: none;
+    font-size: 36px;
+    line-height: 1;
+    padding: 8px 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    z-index: 2;
+    touch-action: manipulation;
+}
+
+.carousel-btn:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.carousel-btn:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+
+.carousel-prev {
+    left: 4px;
+}
+
+.carousel-next {
+    right: 4px;
+}
+
+.carousel-counter {
+    display: block;
+    text-align: center;
+    margin-top: 8px;
+    font-size: 14px;
+    color: #555;
+}
+
+.carousel-caption {
+    text-align: center;
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: #777;
+}
+
+/* View image buttons in table */
+.view-image-button {
+    touch-action: manipulation;
+}
+
+/* Pagination buttons */
+.pagination-controls button {
+    touch-action: manipulation;
+}
+
+/* Focus-visible styles for all interactive elements */
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+    outline: 2px solid #0056b3;
+    outline-offset: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

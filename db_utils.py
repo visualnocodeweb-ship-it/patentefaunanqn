@@ -368,7 +368,8 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
 
 def fetch_image_by_event_id(event_id):
     """
-    Recupera la image_data y image_type para un event_id dado.
+    Recupera todas las imágenes (image_data y image_type) para un event_id dado.
+    Retorna una lista de diccionarios con image_data (base64) e image_type.
     """
     conn = None
     try:
@@ -384,21 +385,24 @@ def fetch_image_by_event_id(event_id):
             WHERE
                 event_id = %s
             ORDER BY
-                created_at DESC
-            LIMIT 1;
+                CASE image_type
+                    WHEN 'vehicle_detection' THEN 1
+                    WHEN 'vehicle_picture' THEN 2
+                    WHEN 'plate' THEN 3
+                    ELSE 4
+                END;
             """
             cur.execute(query, (str(event_id),))
 
-            result = cur.fetchone()
-
-            if result:
-                image_data, image_type = result
+            results = []
+            for row in cur.fetchall():
+                image_data, image_type = row
                 if image_data:
-                    return {
+                    results.append({
                         'image_data': base64.b64encode(image_data).decode('utf-8'),
                         'image_type': image_type
-                    }
-            return None
+                    })
+            return results
         finally:
             cur.close()
 

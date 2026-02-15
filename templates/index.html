@@ -3,17 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0056b3">
     <title>Gestión de Imágenes LPR</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div class="container">
+    <a href="#main-content" class="skip-link">Saltar al contenido principal</a>
+    <div class="container" id="main-content">
         <h1>Gestión de Imágenes LPR</h1>
 
         <div class="search-section">
             <h2>Buscar Patente</h2>
             <form id="search-form">
-                <input type="text" id="plate-input" placeholder="Introduce la patente a buscar">
+                <label for="plate-input" class="sr-only">Patente a buscar</label>
+                <input type="text" id="plate-input" name="plate" autocomplete="off" placeholder="Introduce la patente a buscar…">
                 <button type="submit">Buscar</button>
             </form>
             <div id="search-results" class="image-gallery"></div>
@@ -24,13 +27,15 @@
             <form id="datetime-search-form">
                 <div>
                     <label for="start-date">Desde:</label>
-                    <input type="date" id="start-date">
-                    <input type="time" id="start-time">
+                    <input type="date" id="start-date" name="start_date" autocomplete="off">
+                    <label for="start-time" class="sr-only">Hora de inicio</label>
+                    <input type="time" id="start-time" name="start_time" autocomplete="off">
                 </div>
                 <div>
                     <label for="end-date">Hasta:</label>
-                    <input type="date" id="end-date">
-                    <input type="time" id="end-time">
+                    <input type="date" id="end-date" name="end_date" autocomplete="off">
+                    <label for="end-time" class="sr-only">Hora de fin</label>
+                    <input type="time" id="end-time" name="end_time" autocomplete="off">
                 </div>
                 <button type="submit">Buscar</button>
             </form>
@@ -44,30 +49,33 @@
 
         <section id="patent-table-section">
             <h2>Tabla Completa de Patentes</h2>
-            
+
             <div class="table-controls">
                 <div class="filter-group">
-                    <input type="text" id="patent-table-search-input" placeholder="Buscar patente...">
+                    <label for="patent-table-search-input" class="sr-only">Buscar patente</label>
+                    <input type="text" id="patent-table-search-input" name="search_patent" autocomplete="off" placeholder="Buscar patente…">
                     <button id="search-patent-button">Buscar Patente</button>
                 </div>
                 <div class="filter-group">
-                    <input type="text" id="patent-table-search-brand" placeholder="Buscar marca...">
+                    <label for="patent-table-search-brand" class="sr-only">Buscar marca</label>
+                    <input type="text" id="patent-table-search-brand" name="search_brand" autocomplete="off" placeholder="Buscar marca…">
                     <button id="search-brand-button">Buscar Marca</button>
                 </div>
                 <div class="filter-group">
-                    <input type="text" id="patent-table-search-type" placeholder="Buscar tipo...">
+                    <label for="patent-table-search-type" class="sr-only">Buscar tipo</label>
+                    <input type="text" id="patent-table-search-type" name="search_type" autocomplete="off" placeholder="Buscar tipo…">
                     <button id="search-type-button">Buscar Tipo</button>
                 </div>
                 <div class="filter-group date-range-filter">
                     <label for="patent-table-search-start-date">Desde:</label>
-                    <input type="date" id="patent-table-search-start-date">
+                    <input type="date" id="patent-table-search-start-date" name="filter_start_date" autocomplete="off">
                     <label for="patent-table-search-end-date">Hasta:</label>
-                    <input type="date" id="patent-table-search-end-date">
+                    <input type="date" id="patent-table-search-end-date" name="filter_end_date" autocomplete="off">
                     <button id="search-date-range-button">Buscar Fecha</button>
                 </div>
-                <button id="apply-all-filters-button">Aplicar Todos los Filtros</button> <!-- Botón para aplicar todos los filtros -->
+                <button id="apply-all-filters-button">Aplicar Todos los Filtros</button>
             </div>
-            
+
             <p>Total registros: <span id="total-patents-count">0</span></p>
 
             <table id="patent-table">
@@ -79,11 +87,10 @@
                         <th>Tipo</th>
                         <th>Confianza</th>
                         <th>Fecha y Hora</th>
-                        <th>Acciones</th> <!-- Columna para futuras acciones, como ver imagen -->
+                        <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <!-- Las filas de la tabla se insertarán aquí dinámicamente -->
                 </tbody>
             </table>
 
@@ -96,10 +103,18 @@
     </div>
 
     <!-- The Modal -->
-    <div id="imageModal" class="modal">
+    <div id="imageModal" class="modal" role="dialog" aria-modal="true" aria-label="Imagen de detección">
         <div class="modal-content">
-            <span class="close-button">&times;</span>
-            <img id="modalImage" src="" alt="Imagen de Patente">
+            <button class="close-button" aria-label="Cerrar">&times;</button>
+            <div id="modal-spinner" class="modal-spinner" hidden></div>
+            <div class="carousel-wrapper">
+                <button class="carousel-btn carousel-prev" aria-label="Imagen anterior">&#8249;</button>
+                <img id="modalImage" src="" alt="Imagen de Patente">
+                <button class="carousel-btn carousel-next" aria-label="Imagen siguiente">&#8250;</button>
+            </div>
+            <span id="carousel-counter" class="carousel-counter"></span>
+            <p id="carousel-caption" class="carousel-caption"></p>
+            <p id="modal-error" class="modal-error" aria-live="polite" hidden></p>
         </div>
     </div>
 
