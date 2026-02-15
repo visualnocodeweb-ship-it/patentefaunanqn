@@ -20,17 +20,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- DOM refs ---
     const thumbnailStrip = document.getElementById('latest-thumbnails');
     const patentTableBody = document.querySelector('#patent-table tbody');
-    const totalPatentsCountSpan = document.getElementById('total-patents-count');
     const statsBar = document.getElementById('stats-bar');
-    const prevPageButton = document.getElementById('prev-page-button');
-    const nextPageButton = document.getElementById('next-page-button');
-    const currentPageSpan = document.getElementById('current-page');
+    const paginationInfo = document.getElementById('pagination-info');
+    const paginationButtons = document.getElementById('pagination-buttons');
 
     // Filter inputs
     const filterPatent = document.getElementById('filter-patent');
     const filterBrand = document.getElementById('filter-brand');
     const filterType = document.getElementById('filter-type');
-    const filterConfidence = document.getElementById('filter-confidence');
     const filterStartDate = document.getElementById('filter-start-date');
     const filterEndDate = document.getElementById('filter-end-date');
     const clearFiltersButton = document.getElementById('clear-all-filters-button');
@@ -46,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const carouselNext = document.querySelector('.carousel-next');
     const modalSpinner = document.getElementById('modal-spinner');
 
-    const pageSize = 10;
+    const pageSize = 30;
     let totalPages = 0;
 
     // Filter state
@@ -106,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     filterType.value = currentTypeFilter;
     filterStartDate.value = currentStartDateFilter;
     filterEndDate.value = currentEndDateFilter;
-    filterConfidence.value = currentMinConfidenceFilter;
+    // currentMinConfidenceFilter kept for API compat but no UI input
 
     // --- Read all filter inputs into state ---
     function readAllFilters() {
@@ -115,8 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentTypeFilter = filterType.value.trim();
         currentStartDateFilter = filterStartDate.value;
         currentEndDateFilter = filterEndDate.value;
-        const confVal = filterConfidence.value.trim();
-        currentMinConfidenceFilter = confVal ? parseFloat(confVal) : '';
+        currentMinConfidenceFilter = '';
         currentPage = 1;
     }
 
@@ -132,14 +128,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function createTableRow(item) {
         const row = document.createElement('tr');
         row.innerHTML = `
+            <td>${item.sightings != null ? item.sightings : '-'}</td>
             <td>${escapeHtml(item.plate_text) || 'No detectada'}</td>
             <td>${escapeHtml(item.vehicle_brand) || 'N/A'}</td>
             <td>${escapeHtml(item.vehicle_color) || 'N/A'}</td>
             <td>${escapeHtml(item.vehicle_type) || 'N/A'}</td>
             <td>${item.plate_confidence ? (item.plate_confidence * 100).toFixed(2) + '%' : 'N/A'}</td>
-            <td>${item.sightings != null ? item.sightings : '-'}</td>
             <td>${new Date(item.created_at).toLocaleString()}</td>
-            <td><button data-event-id="${escapeHtml(item.event_id)}" class="view-image-button">Ver Imagen</button></td>
+            <td><button data-event-id="${escapeHtml(item.event_id)}" class="view-image-button">Ver Imágenes</button></td>
         `;
         return row;
     }
@@ -158,10 +154,72 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Pagination ---
-    function updatePaginationControls() {
-        prevPageButton.disabled = currentPage === 1;
-        nextPageButton.disabled = currentPage === totalPages || totalPages === 0;
-        currentPageSpan.textContent = currentPage;
+    function buildPageNumbers(current, total) {
+        // Always show first 2, last 2, and current ±1
+        const pages = new Set();
+        pages.add(1);
+        if (total > 1) pages.add(2);
+        if (total > 0) pages.add(total);
+        if (total > 1) pages.add(total - 1);
+        for (let i = current - 1; i <= current + 1; i++) {
+            if (i >= 1 && i <= total) pages.add(i);
+        }
+        const sorted = Array.from(pages).sort((a, b) => a - b);
+        const result = [];
+        for (let i = 0; i < sorted.length; i++) {
+            if (i > 0 && sorted[i] - sorted[i - 1] > 1) {
+                result.push('…');
+            }
+            result.push(sorted[i]);
+        }
+        return result;
+    }
+
+    function updatePaginationControls(totalCount) {
+        // Info text
+        if (totalCount === undefined) totalCount = 0;
+        const start = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+        const end = Math.min(currentPage * pageSize, totalCount);
+        paginationInfo.textContent = totalCount > 0
+            ? `Mostrando ${start}\u2013${end} de ${totalCount}`
+            : 'Sin resultados';
+
+        // Build buttons
+        paginationButtons.innerHTML = '';
+        if (totalPages <= 1) return;
+
+        const items = buildPageNumbers(currentPage, totalPages);
+
+        // Prev button
+        const prevBtn = document.createElement('button');
+        prevBtn.innerHTML = '&laquo;';
+        prevBtn.dataset.page = currentPage - 1;
+        prevBtn.disabled = currentPage === 1;
+        prevBtn.title = 'Anterior';
+        paginationButtons.appendChild(prevBtn);
+
+        items.forEach(item => {
+            if (item === '…') {
+                const span = document.createElement('span');
+                span.className = 'ellipsis';
+                span.textContent = '…';
+                paginationButtons.appendChild(span);
+            } else {
+                const btn = document.createElement('button');
+                btn.textContent = item;
+                btn.dataset.page = item;
+                if (item === currentPage) btn.classList.add('active');
+                paginationButtons.appendChild(btn);
+            }
+        });
+
+        // Next button
+        const nextBtn = document.createElement('button');
+        nextBtn.innerHTML = '&raquo;';
+        nextBtn.dataset.page = currentPage + 1;
+        nextBtn.disabled = currentPage === totalPages;
+        nextBtn.title = 'Siguiente';
+        paginationButtons.appendChild(nextBtn);
     }
 
     // --- Fetch table data ---
@@ -186,9 +244,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(url, { signal: tableAbort.signal });
             const data = await response.json();
             displayPatentTableResults(data.patents);
-            totalPatentsCountSpan.textContent = data.total_count;
             totalPages = Math.ceil(data.total_count / pageSize);
-            updatePaginationControls();
+            updatePaginationControls(data.total_count);
         } catch (error) {
             if (error.name === 'AbortError') return;
             console.error('Error fetching all patents:', error);
@@ -262,7 +319,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Thumbnails ---
     async function fetchLatestThumbnails() {
         try {
-            const response = await fetch('/api/recent_thumbnails?limit=8');
+            const response = await fetch('/api/recent_thumbnails?limit=7');
             const data = await response.json();
             thumbnailStrip.innerHTML = '';
             data.forEach(item => {
@@ -276,6 +333,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 img.addEventListener('click', () => openModalForEvent(item.event_id));
                 thumbnailStrip.appendChild(img);
             });
+            // "Ver Todas" button
+            const viewAllBtn = document.createElement('button');
+            viewAllBtn.className = 'thumbnail view-all-btn';
+            viewAllBtn.textContent = 'Ver Todas';
+            viewAllBtn.addEventListener('click', openBrowseCarousel);
+            thumbnailStrip.appendChild(viewAllBtn);
         } catch (error) {
             console.error('Error fetching thumbnails:', error);
         }
@@ -283,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Filter event listeners ---
     // Text/number inputs: debounced on input, immediate on Enter
-    [filterPatent, filterBrand, filterType, filterConfidence].forEach(input => {
+    [filterPatent, filterBrand, filterType].forEach(input => {
         input.addEventListener('input', debouncedFetch);
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
@@ -303,7 +366,6 @@ document.addEventListener('DOMContentLoaded', () => {
         filterPatent.value = '';
         filterBrand.value = '';
         filterType.value = '';
-        filterConfidence.value = '';
         filterStartDate.value = '';
         filterEndDate.value = '';
         document.querySelectorAll('.time-preset-btn').forEach(b => b.classList.remove('active'));
@@ -354,8 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentPatentFilter = filterPatent.value.trim();
             currentBrandFilter = filterBrand.value.trim();
             currentTypeFilter = filterType.value.trim();
-            const confVal = filterConfidence.value.trim();
-            currentMinConfidenceFilter = confVal ? parseFloat(confVal) : '';
+            currentMinConfidenceFilter = '';
             if (preset === 'clear') {
                 currentStartDateFilter = '';
                 currentEndDateFilter = '';
@@ -366,24 +427,31 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // --- Pagination ---
-    prevPageButton.addEventListener('click', () => {
-        if (currentPage > 1) {
-            currentPage--;
+    // --- Pagination (event delegation) ---
+    paginationButtons.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn || btn.disabled) return;
+        const page = parseInt(btn.dataset.page);
+        if (page && page >= 1 && page <= totalPages && page !== currentPage) {
+            currentPage = page;
             fetchPatentsTableData();
         }
     });
 
-    nextPageButton.addEventListener('click', () => {
-        if (currentPage < totalPages) {
-            currentPage++;
-            fetchPatentsTableData();
-        }
-    });
+    // --- Modal mode ---
+    let modalMode = null; // 'event' | 'browse'
 
-    // --- Carousel / Modal ---
+    // --- Carousel / Modal (event mode) ---
     let carouselImages = [];
     let carouselIndex = 0;
+
+    // --- Browse mode state ---
+    let browseItems = [];
+    let browseIndex = 0;
+    let browseTotalCount = 0;
+    let browseTypes = ['vehicle_picture'];
+    let browseAbort = null;
+    const browseFilters = document.getElementById('browse-filters');
 
     function showModalError(msg) {
         modalError.textContent = msg;
@@ -413,8 +481,14 @@ document.addEventListener('DOMContentLoaded', () => {
         carouselNext.style.display = showNav ? '' : 'none';
     }
 
-    carouselPrev.addEventListener('click', () => showSlide(carouselIndex - 1));
-    carouselNext.addEventListener('click', () => showSlide(carouselIndex + 1));
+    carouselPrev.addEventListener('click', () => {
+        if (modalMode === 'browse') browseShowSlide(browseIndex - 1);
+        else showSlide(carouselIndex - 1);
+    });
+    carouselNext.addEventListener('click', () => {
+        if (modalMode === 'browse') browseShowSlide(browseIndex + 1);
+        else showSlide(carouselIndex + 1);
+    });
 
     function showSpinner() {
         modalSpinner.hidden = false;
@@ -430,6 +504,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function openModalForEvent(eventId) {
+        modalMode = 'event';
+        browseFilters.hidden = true;
         hideModalError();
         showSpinner();
         imageModal.style.display = 'flex';
@@ -465,8 +541,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function closeModal() {
         imageModal.style.display = 'none';
         modalImage.src = '';
+        modalMode = null;
+        // Event mode cleanup
         carouselImages = [];
         carouselIndex = 0;
+        // Browse mode cleanup
+        browseItems = [];
+        browseIndex = 0;
+        browseTotalCount = 0;
+        if (browseAbort) { browseAbort.abort(); browseAbort = null; }
+        browseFilters.hidden = true;
+        // Shared cleanup
         carouselCounter.textContent = '';
         carouselCaption.textContent = '';
         hideModalError();
@@ -481,8 +566,177 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('keydown', (event) => {
         if (imageModal.style.display === 'flex') {
             if (event.key === 'Escape') closeModal();
-            else if (event.key === 'ArrowLeft') showSlide(carouselIndex - 1);
-            else if (event.key === 'ArrowRight') showSlide(carouselIndex + 1);
+            else if (event.key === 'ArrowLeft') {
+                if (modalMode === 'browse') browseShowSlide(browseIndex - 1);
+                else showSlide(carouselIndex - 1);
+            } else if (event.key === 'ArrowRight') {
+                if (modalMode === 'browse') browseShowSlide(browseIndex + 1);
+                else showSlide(carouselIndex + 1);
+            }
+        }
+    });
+
+    // --- Browse mode functions ---
+    async function browseLoadPage(direction) {
+        if (browseAbort) browseAbort.abort();
+        browseAbort = new AbortController();
+
+        const cursor = direction === 'forward'
+            ? browseItems[browseItems.length - 1]
+            : browseItems[0];
+
+        const params = new URLSearchParams({
+            limit: '5',
+            direction: direction,
+            types: browseTypes.join(',')
+        });
+        if (cursor) {
+            params.set('cursor_ts', cursor.created_at);
+            params.set('cursor_id', cursor.image_id);
+        }
+        // Inherit active table filters
+        if (currentStartDateFilter) params.set('start_date', currentStartDateFilter);
+        if (currentEndDateFilter) params.set('end_date', currentEndDateFilter);
+        if (currentPatentFilter) params.set('search_term', currentPatentFilter);
+
+        try {
+            const resp = await fetch('/api/browse_images?' + params, { signal: browseAbort.signal });
+            const data = await resp.json();
+            if (direction === 'forward') browseItems.push(...data.images);
+            else browseItems.unshift(...data.images);
+            if (data.total_count !== undefined) browseTotalCount = data.total_count;
+            return data.images.length;
+        } catch (e) {
+            if (e.name === 'AbortError') return 0;
+            console.error('Error loading browse page:', e);
+            return 0;
+        }
+    }
+
+    function browseShowSlide(index) {
+        if (browseItems.length === 0) return;
+        if (index < 0) index = 0;
+        if (index >= browseItems.length) index = browseItems.length - 1;
+        browseIndex = index;
+
+        const item = browseItems[browseIndex];
+
+        // Set handlers BEFORE src so cached images don't miss onload
+        modalImage.onload = function () {
+            hideSpinner();
+            modalImage.style.display = 'block';
+        };
+        modalImage.onerror = function () {
+            hideSpinner();
+            showModalError('Error al cargar la imagen.');
+        };
+
+        // Show spinner (hides image + clears text), then set src
+        modalSpinner.hidden = false;
+        modalImage.style.display = 'none';
+        modalImage.src = '/api/browse_image/' + item.image_id;
+
+        // Set counter/caption AFTER spinner setup (don't call showSpinner which clears them)
+        carouselCounter.textContent = `${browseIndex + 1} / ${browseTotalCount}`;
+        const typeLabels = { vehicle_detection: 'Detección', vehicle_picture: 'Vehículo', plate: 'Patente' };
+        const typeLabel = typeLabels[item.image_type] || item.image_type;
+        const ts = new Date(item.created_at).toLocaleString();
+        carouselCaption.textContent = `${item.plate_text || 'Sin patente'} — ${typeLabel} — ${ts}`;
+
+        const showNav = browseTotalCount > 1;
+        carouselPrev.style.display = showNav ? '' : 'none';
+        carouselNext.style.display = showNav ? '' : 'none';
+
+        // Preload nearby image binaries into browser cache (3 ahead, 3 behind)
+        for (let offset = -3; offset <= 3; offset++) {
+            const i = browseIndex + offset;
+            if (offset !== 0 && i >= 0 && i < browseItems.length) {
+                const pre = new Image();
+                pre.src = '/api/browse_image/' + browseItems[i].image_id;
+            }
+        }
+
+        // Prefetch next metadata page if near end
+        if (browseIndex >= browseItems.length - 2) {
+            browsePrefetch();
+        }
+    }
+
+    // Prefetch metadata + preload image binaries into browser cache
+    let prefetchInFlight = false;
+    async function browsePrefetch() {
+        if (prefetchInFlight) return;
+        prefetchInFlight = true;
+        const cursor = browseItems[browseItems.length - 1];
+        if (!cursor) { prefetchInFlight = false; return; }
+
+        const params = new URLSearchParams({
+            limit: '5', direction: 'forward', types: browseTypes.join(','),
+            cursor_ts: cursor.created_at, cursor_id: cursor.image_id
+        });
+        if (currentStartDateFilter) params.set('start_date', currentStartDateFilter);
+        if (currentEndDateFilter) params.set('end_date', currentEndDateFilter);
+        if (currentPatentFilter) params.set('search_term', currentPatentFilter);
+
+        try {
+            const resp = await fetch('/api/browse_images?' + params);
+            const data = await resp.json();
+            browseItems.push(...data.images);
+        } catch (e) {
+            console.error('Prefetch error:', e);
+        }
+        prefetchInFlight = false;
+    }
+
+    async function openBrowseCarousel() {
+        modalMode = 'browse';
+        browseFilters.hidden = false;
+        browseItems = [];
+        browseIndex = 0;
+        browseTotalCount = 0;
+
+        // Sync checkboxes with browseTypes
+        browseFilters.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.checked = browseTypes.includes(cb.value);
+        });
+
+        hideModalError();
+        showSpinner();
+        imageModal.style.display = 'flex';
+
+        const loaded = await browseLoadPage('forward');
+        hideSpinner();
+        if (loaded > 0) {
+            browseShowSlide(0);
+        } else {
+            showModalError('No se encontraron imágenes.');
+        }
+    }
+
+    // Browse filter checkbox handling
+    browseFilters.addEventListener('change', async (e) => {
+        if (e.target.type !== 'checkbox') return;
+        const checkboxes = browseFilters.querySelectorAll('input[type="checkbox"]');
+        const checked = Array.from(checkboxes).filter(cb => cb.checked);
+
+        // Require at least 1 checked
+        if (checked.length === 0) {
+            e.target.checked = true;
+            return;
+        }
+
+        browseTypes = checked.map(cb => cb.value);
+        browseItems = [];
+        browseIndex = 0;
+        browseTotalCount = 0;
+
+        showSpinner();
+        const loaded = await browseLoadPage('forward');
+        hideSpinner();
+        if (loaded > 0) {
+            browseShowSlide(0);
+        } else {
+            showModalError('No se encontraron imágenes con estos filtros.');
         }
     });
 

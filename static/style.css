@@ -91,30 +91,21 @@ h1 {
 /* Thumbnail strip */
 .thumbnail-strip {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
-    overflow-x: auto;
     padding: 8px 0 12px;
     margin-bottom: 16px;
-    scrollbar-width: thin;
-}
-
-.thumbnail-strip::-webkit-scrollbar {
-    height: 6px;
-}
-
-.thumbnail-strip::-webkit-scrollbar-thumb {
-    background: #ccc;
-    border-radius: 3px;
 }
 
 .thumbnail {
-    width: 120px;
+    flex: 1 1 120px;
+    min-width: 100px;
+    max-width: 180px;
     height: 80px;
     object-fit: cover;
     border-radius: 6px;
     border: 1px solid #ddd;
     cursor: pointer;
-    flex-shrink: 0;
     background-color: #eee;
 }
 
@@ -152,11 +143,18 @@ h1 {
     border-color: #007bff;
 }
 
+/* Filter labels */
+.filter-label {
+    font-size: 13px;
+    color: #555;
+    white-space: nowrap;
+}
+
 /* Table controls — flat flex row */
 .table-controls {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 10px;
     margin-bottom: 16px;
     align-items: center;
 }
@@ -184,10 +182,17 @@ h1 {
     cursor: pointer;
     font-size: 13px;
     touch-action: manipulation;
+    margin-left: auto;
 }
 
 #clear-all-filters-button:hover {
     background-color: #5a6268;
+}
+
+/* Table wrapper for mobile scroll */
+.table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* Styles for the patent table */
@@ -209,8 +214,8 @@ h1 {
     cursor: pointer;
 }
 
-/* Tabular nums for confidence, sightings, and date columns */
-#patent-table td:nth-child(5),
+/* Tabular nums for sightings, confidence, and date columns */
+#patent-table td:nth-child(1),
 #patent-table td:nth-child(6),
 #patent-table td:nth-child(7) {
     font-variant-numeric: tabular-nums;
@@ -231,6 +236,11 @@ h1 {
     color: #888;
 }
 
+/* Center the actions column */
+#patent-table td:last-child {
+    text-align: center;
+}
+
 /* View image buttons in table */
 .view-image-button {
     touch-action: manipulation;
@@ -247,28 +257,68 @@ h1 {
     background-color: #0056b3;
 }
 
-/* Pagination buttons */
+/* Pagination */
 .pagination-controls {
     margin-top: 12px;
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
-.pagination-controls button {
+.pagination-info {
+    font-size: 13px;
+    color: #666;
+}
+
+.pagination-buttons {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.pagination-buttons button {
     touch-action: manipulation;
-    padding: 6px 14px;
-    background-color: #007bff;
-    color: white;
-    border: none;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 8px;
+    background-color: #e9ecef;
+    color: #333;
+    border: 1px solid #ced4da;
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.pagination-controls button:disabled {
-    background-color: #ccc;
+.pagination-buttons button:hover:not(:disabled):not(.active) {
+    background-color: #dee2e6;
+}
+
+.pagination-buttons button.active {
+    background-color: #007bff;
+    color: #fff;
+    border-color: #007bff;
+}
+
+.pagination-buttons button:disabled {
+    background-color: #f0f0f0;
+    color: #aaa;
+    border-color: #ddd;
     cursor: default;
+}
+
+.pagination-buttons .ellipsis {
+    min-width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: #666;
 }
 
 /* Modal styles */
@@ -403,12 +453,98 @@ h1 {
     color: #777;
 }
 
+/* Browse filters in modal */
+.browse-filters {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    padding: 8px 0;
+    font-size: 13px;
+}
+
+.browse-filters label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    color: #555;
+}
+
+/* "Ver Todas" button in thumbnail strip */
+.view-all-btn {
+    flex: 0 0 120px;
+    height: 80px;
+    background-color: #007bff;
+    color: #fff;
+    border: 1px solid #007bff;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.view-all-btn:hover {
+    background-color: #0056b3;
+}
+
 /* Focus-visible styles for all interactive elements */
 button:focus-visible,
 input:focus-visible,
 a:focus-visible {
     outline: 2px solid #0056b3;
     outline-offset: 2px;
+}
+
+/* Responsive: tablet / mobile */
+@media (max-width: 768px) {
+    .table-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .table-controls input[type="text"],
+    .table-controls input[type="number"],
+    .table-controls input[type="date"] {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    #clear-all-filters-button {
+        margin-left: 0;
+    }
+
+    .stats-bar {
+        font-size: 12px;
+        gap: 10px;
+        padding: 10px 12px;
+    }
+
+    .thumbnail {
+        flex: 1 1 90px;
+        min-width: 80px;
+        height: 66px;
+    }
+
+    .pagination-controls {
+        justify-content: center;
+        flex-direction: column;
+        align-items: center;
+    }
+}
+
+/* Responsive: small phone */
+@media (max-width: 480px) {
+    .container {
+        padding: 12px;
+    }
+
+    h1 {
+        font-size: 1.3rem;
+    }
 }
 
 /* Reduced motion */

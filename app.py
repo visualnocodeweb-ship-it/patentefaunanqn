@@ -1,7 +1,7 @@
 import logging
 import os
 import re
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, Response
 from flask_cors import CORS
 from dotenv import load_dotenv
 import db_utils
@@ -130,6 +130,60 @@ def stats():
     if result:
         return jsonify(result)
     return jsonify({"error": "Failed to fetch stats"}), 500
+
+_VALID_BROWSE_TYPES = {'vehicle_detection', 'vehicle_picture', 'plate'}
+
+@app.route('/api/browse_images', methods=['GET'])
+def browse_images():
+    """Keyset-paginated image metadata for the global carousel."""
+    cursor_ts = request.args.get('cursor_ts', None, type=str)
+    cursor_id = request.args.get('cursor_id', None, type=str)
+    limit = request.args.get('limit', 3, type=int)
+    limit = max(1, min(10, limit))
+    direction = request.args.get('direction', 'forward', type=str)
+    if direction not in ('forward', 'backward'):
+        direction = 'forward'
+
+    types_raw = request.args.get('types', 'vehicle_detection,vehicle_picture', type=str)
+    types = [t.strip() for t in types_raw.split(',') if t.strip() in _VALID_BROWSE_TYPES]
+    if not types:
+        types = ['vehicle_detection', 'vehicle_picture']
+
+    start_date = request.args.get('start_date', None, type=str)
+    end_date = request.args.get('end_date', None, type=str)
+    search_term = request.args.get('search_term', None, type=str)
+
+    images = db_utils.fetch_browsable_images(
+        cursor_ts=cursor_ts, cursor_id=cursor_id, limit=limit,
+        direction=direction, types=types,
+        start_date=start_date, end_date=end_date, search_term=search_term
+    )
+
+    result = {'images': images}
+
+    # Only include total_count on first request (no cursor)
+    if not cursor_ts:
+        result['total_count'] = db_utils.count_browsable_images(
+            types, start_date=start_date, end_date=end_date, search_term=search_term
+        )
+
+    return jsonify(result)
+
+
+@app.route('/api/browse_image/<image_id>', methods=['GET'])
+def browse_image(image_id):
+    """Serves raw image bytes for a single image by ID."""
+    if not _UUID_RE.match(image_id):
+        return jsonify({"error": "Invalid image_id format"}), 400
+    data = db_utils.fetch_browse_image_by_id(image_id)
+    if not data:
+        return jsonify({"error": "Image not found"}), 404
+    return Response(
+        data['image_data'],
+        mimetype='image/jpeg',
+        headers={'Cache-Control': 'public, max-age=86400'}
+    )
+
 
 @app.route('/api/image/<event_id>', methods=['GET'])
 def get_image(event_id):

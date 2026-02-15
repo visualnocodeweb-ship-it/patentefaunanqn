@@ -492,6 +492,143 @@ def fetch_recent_thumbnails(limit=8):
         if conn:
             conn.close()
 
+def count_browsable_images(types, start_date=None, end_date=None, search_term=None):
+    """Count browsable images filtered by type, date range, and plate search."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        conditions = []
+        params = []
+
+        placeholders = ','.join(['%s'] * len(types))
+        conditions.append(f"ei.image_type IN ({placeholders})")
+        params.extend(types)
+
+        start_date = _validate_date(start_date)
+        if start_date:
+            conditions.append("de.created_at >= %s")
+            params.append(start_date)
+        end_date = _validate_date(end_date)
+        if end_date:
+            conditions.append("de.created_at <= %s")
+            params.append(end_date)
+        if search_term:
+            conditions.append("de.camera_plate_text ILIKE %s")
+            params.append(f'%{search_term}%')
+
+        where = " WHERE " + " AND ".join(conditions)
+        query = ("SELECT COUNT(*) FROM event_images ei "
+                 "JOIN detection_events de ON de.id = ei.event_id" + where)
+        cur.execute(query, params)
+        count = cur.fetchone()[0]
+        cur.close()
+        return count
+    except (psycopg2.Error, Exception) as e:
+        logger.error("Error counting browsable images: %s", e)
+        return 0
+    finally:
+        if conn:
+            conn.close()
+
+
+def fetch_browsable_images(cursor_ts=None, cursor_id=None, limit=5, direction='forward',
+                           types=None, start_date=None, end_date=None, search_term=None):
+    """Keyset-paginated image metadata (no image_data). Returns list of dicts."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        conditions = []
+        params = []
+
+        if types:
+            placeholders = ','.join(['%s'] * len(types))
+            conditions.append(f"ei.image_type IN ({placeholders})")
+            params.extend(types)
+
+        if cursor_ts and cursor_id:
+            if direction == 'forward':
+                conditions.append("(ei.created_at, ei.id) < (%s, %s)")
+            else:
+                conditions.append("(ei.created_at, ei.id) > (%s, %s)")
+            params.extend([cursor_ts, cursor_id])
+
+        start_date = _validate_date(start_date)
+        if start_date:
+            conditions.append("de.created_at >= %s")
+            params.append(start_date)
+        end_date = _validate_date(end_date)
+        if end_date:
+            conditions.append("de.created_at <= %s")
+            params.append(end_date)
+        if search_term:
+            conditions.append("de.camera_plate_text ILIKE %s")
+            params.append(f'%{search_term}%')
+
+        where = ""
+        if conditions:
+            where = " WHERE " + " AND ".join(conditions)
+
+        if direction == 'forward':
+            order = "ORDER BY ei.created_at DESC, ei.id DESC"
+        else:
+            order = "ORDER BY ei.created_at ASC, ei.id ASC"
+
+        query = (
+            "SELECT ei.id AS image_id, de.id AS event_id, ei.created_at, "
+            "ei.image_type, de.camera_plate_text AS plate_text "
+            "FROM event_images ei "
+            "JOIN detection_events de ON de.id = ei.event_id"
+            + where + " " + order + " LIMIT %s"
+        )
+        params.append(limit)
+        cur.execute(query, params)
+
+        columns = [desc[0] for desc in cur.description]
+        results = []
+        for row in cur.fetchall():
+            row_dict = dict(zip(columns, row))
+            if row_dict.get('created_at'):
+                row_dict['created_at'] = row_dict['created_at'].isoformat()
+            row_dict['image_id'] = str(row_dict['image_id'])
+            row_dict['event_id'] = str(row_dict['event_id'])
+            results.append(row_dict)
+
+        # Backward fetch returns ASC order, reverse to get DESC
+        if direction == 'backward':
+            results.reverse()
+
+        cur.close()
+        return results
+    except (psycopg2.Error, Exception) as e:
+        logger.error("Error fetching browsable images: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def fetch_browse_image_by_id(image_id):
+    """Fetch raw image bytes and type for a single image by ID."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT image_data, image_type FROM event_images WHERE id = %s", (str(image_id),))
+        row = cur.fetchone()
+        cur.close()
+        if row and row[0]:
+            return {'image_data': bytes(row[0]), 'image_type': row[1]}
+        return None
+    except (psycopg2.Error, Exception) as e:
+        logger.error("Error fetching browse image by id: %s", e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
 def fetch_image_by_event_id(event_id):
     """
     Recupera todas las imágenes (image_data y image_type) para un event_id dado.
