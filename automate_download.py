@@ -1,7 +1,10 @@
-import db_utils
 import os
 import datetime
-import time
+from dotenv import load_dotenv
+
+load_dotenv()
+
+import db_utils
 
 OUTPUT_DIR = "imagenes_descargadas_automaticas"
 TIMESTAMP_FILE = "last_processed_timestamp.txt"
@@ -39,7 +42,7 @@ def download_new_images():
     latest_timestamp_in_batch = last_timestamp
 
     for img_data_row in new_images:
-        img_id = img_data_row['id']
+        img_id = img_data_row['image_id']
         img_type = img_data_row['image_type']
         file_name = img_data_row['file_name']
         image_bytes = img_data_row['image_data']

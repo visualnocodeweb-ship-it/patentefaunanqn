@@ -10,3 +10,7 @@ __pycache__/
 
 # Imágenes generadas
 imagenes_extraidas/
+imagenes_descargadas_automaticas/
+
+# State files
+last_processed_timestamp.txt

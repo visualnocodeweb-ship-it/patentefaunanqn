@@ -1,7 +1,13 @@
+import logging
 import psycopg2
 import base64
 import os
 import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # Mapeo para normalizar marcas de vehículos
 VEHICLE_BRAND_NORMALIZATION_MAP = {
@@ -24,14 +30,17 @@ def normalize_vehicle_brand(brand):
     return brand.capitalize()
 
 # --- Configuración de la Base de Datos ---
-DB_HOST = "dpg-d5t9v12li9vc73a40480-a.oregon-postgres.render.com"
-DB_NAME = "patentesfaunqn"
-DB_USER = "patentesfaunqn_user"
-DB_PASSWORD = "zQpkn7m6RVjA8bm884Dpwldb6rsknvEw" # ¡IMPORTANTE! Reemplaza esto con tu contraseña real
+DB_HOST = os.environ["DB_HOST"]
+DB_NAME = os.environ["DB_NAME"]
+DB_USER = os.environ["DB_USER"]
+DB_PASSWORD = os.environ["DB_PASSWORD"]
 
 def get_db_connection():
     """Establece y devuelve una conexión a la base de datos."""
-    conn = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASSWORD)
+    conn = psycopg2.connect(
+        host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASSWORD,
+        connect_timeout=10
+    )
     return conn
 
 def fetch_latest_images(limit=5): # Reducido el límite para depuración
@@ -56,22 +65,17 @@ def fetch_latest_images(limit=5): # Reducido el límite para depuración
             de.camera_confidence AS plate_confidence
         FROM
             detection_events de
-        LEFT JOIN
+        JOIN
             event_images ei ON de.id = ei.event_id
-        LEFT JOIN
-            plate_detections pd ON de.id = pd.event_id
         ORDER BY
             ei.created_at DESC
         LIMIT %s;
         """
-        print("DEBUG: fetch_latest_images - Before cur.execute()")
         cur.execute(query, (limit,))
-        print("DEBUG: fetch_latest_images - After cur.execute(), before cur.fetchall()")
-        
+
         columns = [desc[0] for desc in cur.description]
         results = []
         rows = cur.fetchall()
-        print(f"DEBUG: fetch_latest_images - Rows fetched from DB: {len(rows)}")
         for row in rows:
             row_dict = dict(zip(columns, row))
             if 'vehicle_brand' in row_dict: # Asegurarse de que el campo exista
@@ -84,10 +88,10 @@ def fetch_latest_images(limit=5): # Reducido el límite para depuración
         return results
 
     except psycopg2.Error as e:
-        print(f"Error de base de datos al obtener últimas imágenes: {e}")
+        logger.error("Error de base de datos al obtener últimas imágenes: %s", e)
         return []
     except Exception as e:
-        print(f"Un error inesperado ocurrió al obtener últimas imágenes: {e}")
+        logger.error("Un error inesperado ocurrió al obtener últimas imágenes: %s", e)
         return []
     finally:
         if conn:
@@ -112,14 +116,12 @@ def fetch_new_images_for_download(last_timestamp=None):
             ei.image_data,
             ei.image_type,
             ei.file_name,
-            pd.plate_text,
-            pd.confidence AS plate_confidence
+            de.camera_plate_text AS plate_text,
+            de.camera_confidence AS plate_confidence
         FROM
             detection_events de
-        LEFT JOIN
+        JOIN
             event_images ei ON de.id = ei.event_id
-        LEFT JOIN
-            plate_detections pd ON de.id = pd.event_id
         WHERE
             (%s IS NULL OR de.created_at > %s)
         ORDER BY
@@ -138,10 +140,10 @@ def fetch_new_images_for_download(last_timestamp=None):
         return results
 
     except psycopg2.Error as e:
-        print(f"Error de base de datos al obtener nuevas imágenes para descarga: {e}")
+        logger.error("Error de base de datos al obtener nuevas imágenes para descarga: %s", e)
         return []
     except Exception as e:
-        print(f"Un error inesperado ocurrió al obtener nuevas imágenes para descarga: {e}")
+        logger.error("Un error inesperado ocurrió al obtener nuevas imágenes para descarga: %s", e)
         return []
     finally:
         if conn:
@@ -175,10 +177,8 @@ def fetch_images_by_datetime_range(start_datetime_str, end_datetime_str, limit=5
             de.camera_confidence AS plate_confidence
         FROM
             detection_events de
-        LEFT JOIN
+        JOIN
             event_images ei ON de.id = ei.event_id
-        LEFT JOIN
-            plate_detections pd ON de.id = pd.event_id
         WHERE
             de.created_at >= %s AND de.created_at <= %s
         ORDER BY
@@ -198,25 +198,24 @@ def fetch_images_by_datetime_range(start_datetime_str, end_datetime_str, limit=5
             if row_dict['image_data']:
                 row_dict['image_data'] = base64.b64encode(row_dict['image_data']).decode('utf-8')
             results.append(row_dict)
-        
- # THIS IS THE NEW PRINT STATEMENT
+
         cur.close()
         return results
 
     except (ValueError, TypeError) as e:
-        print(f"Error en el formato de fecha/hora: {e}")
+        logger.error("Error en el formato de fecha/hora: %s", e)
         return []
     except psycopg2.Error as e:
-        print(f"Error de base de datos al buscar por rango de fecha/hora: {e}")
+        logger.error("Error de base de datos al buscar por rango de fecha/hora: %s", e)
         return []
     except Exception as e:
-        print(f"Un error inesperado ocurrió al buscar por rango de fecha/hora: {e}")
+        logger.error("Un error inesperado ocurrió al buscar por rango de fecha/hora: %s", e)
         return []
     finally:
         if conn:
             conn.close()
 
-def search_by_plate_text(plate_text):
+def search_by_plate_text(plate_text, limit=50):
     """
     Busca imágenes y datos de detección de patente por el texto de la patente.
     Retorna una lista de diccionarios con la información combinada.
@@ -226,7 +225,6 @@ def search_by_plate_text(plate_text):
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Usamos ILIKE para búsqueda insensible a mayúsculas/minúsculas y '%' para coincidencia parcial
         query = """
         SELECT
             de.id AS event_id,
@@ -239,16 +237,15 @@ def search_by_plate_text(plate_text):
             de.camera_confidence AS plate_confidence
         FROM
             detection_events de
-        LEFT JOIN
+        JOIN
             event_images ei ON de.id = ei.event_id
-        LEFT JOIN
-            plate_detections pd ON de.id = pd.event_id
         WHERE
             de.camera_plate_text ILIKE %s
         ORDER BY
-            de.created_at DESC;
+            de.created_at DESC
+        LIMIT %s;
         """
-        cur.execute(query, (f'%{plate_text}%',)) # Añadimos comodines para búsqueda parcial
+        cur.execute(query, (f'%{plate_text}%', limit))
         
         columns = [desc[0] for desc in cur.description]
         results = []
@@ -264,10 +261,10 @@ def search_by_plate_text(plate_text):
         return results
 
     except psycopg2.Error as e:
-        print(f"Error de base de datos al buscar por patente: {e}")
+        logger.error("Error de base de datos al buscar por patente: %s", e)
         return []
     except Exception as e:
-        print(f"Un error inesperado ocurrió al buscar por patente: {e}")
+        logger.error("Un error inesperado ocurrió al buscar por patente: %s", e)
         return []
     finally:
         if conn:
@@ -360,10 +357,10 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
         return patents, total_count
 
     except (ValueError, TypeError, psycopg2.Error) as e:
-        print(f"Error de base de datos al obtener patentes paginadas o en el formato de fecha: {e}")
+        logger.error("Error de base de datos al obtener patentes paginadas o en el formato de fecha: %s", e)
         return [], 0
     except Exception as e:
-        print(f"Un error inesperado ocurrió al obtener patentes paginadas: {e}")
+        logger.error("Un error inesperado ocurrió al obtener patentes paginadas: %s", e)
         return [], 0
     finally:
         if conn:
@@ -377,40 +374,39 @@ def fetch_image_by_event_id(event_id):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        try:
+            query = """
+            SELECT
+                image_data,
+                image_type
+            FROM
+                event_images
+            WHERE
+                event_id = %s
+            ORDER BY
+                created_at DESC
+            LIMIT 1;
+            """
+            cur.execute(query, (str(event_id),))
 
-        query = """
-        SELECT
-            image_data,
-            image_type
-        FROM
-            event_images
-        WHERE
-            event_id = %s
-        ORDER BY
-            created_at DESC
-        LIMIT 1;
-        """ # Tomamos la más reciente si hay varias imágenes para el mismo event_id (ej. _PICTURE, _DETECTION, _PLATE)
-        
-        cur.execute(query, (str(event_id),)) # Asegurarse de que el event_id sea string si es UUID
-        
-        result = cur.fetchone()
-        
-        if result:
-            image_data, image_type = result
-            if image_data:
-                # Codificar a base64 string si viene como bytes
-                return {
-                    'image_data': base64.b64encode(image_data).decode('utf-8'),
-                    'image_type': image_type
-                }
-        cur.close()
-        return None
+            result = cur.fetchone()
+
+            if result:
+                image_data, image_type = result
+                if image_data:
+                    return {
+                        'image_data': base64.b64encode(image_data).decode('utf-8'),
+                        'image_type': image_type
+                    }
+            return None
+        finally:
+            cur.close()
 
     except psycopg2.Error as e:
-        print(f"Error de base de datos al obtener imagen por event_id: {e}")
+        logger.error("Error de base de datos al obtener imagen por event_id: %s", e)
         return None
     except Exception as e:
-        print(f"Un error inesperado ocurrió al obtener imagen por event_id: {e}")
+        logger.error("Un error inesperado ocurrió al obtener imagen por event_id: %s", e)
         return None
     finally:
         if conn:

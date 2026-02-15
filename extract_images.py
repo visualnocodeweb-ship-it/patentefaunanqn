@@ -1,11 +1,14 @@
 import psycopg2
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- Configuración de la Base de Datos ---
-DB_HOST = "dpg-d5t9v12li9vc73a40480-a.oregon-postgres.render.com"
-DB_NAME = "patentesfaunqn"
-DB_USER = "patentesfaunqn_user"
-DB_PASSWORD = "zQpkn7m6RVjA8bm884Dpwldb6rsknvEw" # ¡IMPORTANTE! Reemplaza esto con tu contraseña real
+DB_HOST = os.environ["DB_HOST"]
+DB_NAME = os.environ["DB_NAME"]
+DB_USER = os.environ["DB_USER"]
+DB_PASSWORD = os.environ["DB_PASSWORD"]
 
 # --- Directorio de Salida ---
 OUTPUT_DIR = "imagenes_extraidas"
