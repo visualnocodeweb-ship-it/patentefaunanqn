@@ -14,3 +14,6 @@ imagenes_descargadas_automaticas/
 
 # State files
 last_processed_timestamp.txt
+
+# Secrets
+.env
