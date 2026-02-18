@@ -14,6 +14,11 @@ VEHICLE_BRAND_NORMALIZATION_MAP = {
     "Renau": "Renault",
 }
 
+# Reverse map: normalized_brand -> [raw DB variants that normalize to it]
+_BRAND_RAW_VARIANTS: dict = {}
+for _raw_brand, _norm_brand in VEHICLE_BRAND_NORMALIZATION_MAP.items():
+    _BRAND_RAW_VARIANTS.setdefault(_norm_brand, []).append(_raw_brand)
+
 def normalize_vehicle_brand(brand):
     """Normaliza una cadena de marca de vehículo usando un mapeo predefinido."""
     if brand is None:
@@ -355,9 +360,13 @@ def _build_where_clause(search_term=None, brand_filter=None, color_filter=None,
         conditions.append("camera_plate_text ILIKE %s")
         params.append(f'%{search_term}%')
     if brand_filter:
-        placeholders = ','.join(['%s'] * len(brand_filter))
+        expanded_brands = []
+        for b in brand_filter:
+            expanded_brands.append(b)
+            expanded_brands.extend(_BRAND_RAW_VARIANTS.get(b, []))
+        placeholders = ','.join(['%s'] * len(expanded_brands))
         conditions.append(f"vehicle_brand IN ({placeholders})")
-        params.extend(brand_filter)
+        params.extend(expanded_brands)
     if color_filter:
         placeholders = ','.join(['%s'] * len(color_filter))
         conditions.append(f"vehicle_color IN ({placeholders})")
