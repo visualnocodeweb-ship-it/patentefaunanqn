@@ -11,7 +11,13 @@ import db_utils
 logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
-CORS(app)
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()] or ["*"]
+CORS(
+    app,
+    origins=_cors_origins,
+    methods=["GET", "HEAD"],
+    allow_headers=["Content-Type", "Accept"],
+)
 
 _UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
 
