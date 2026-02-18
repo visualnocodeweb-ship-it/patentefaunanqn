@@ -325,7 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
             data.forEach(item => {
                 const img = document.createElement('img');
                 img.className = 'thumbnail';
-                img.src = `data:image/jpeg;base64,${item.image_data}`;
+                img.src = `/api/browse_image/${item.image_id}`;
                 img.alt = item.plate_text || 'Detección';
                 img.width = 120;
                 img.height = 80;
@@ -741,7 +741,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Initial loads ---
-    fetchLatestThumbnails();
+    // Data first so the table is usable immediately; thumbnails load after.
     fetchPatentsTableData();
     fetchStats();
+    Promise.resolve().then(fetchLatestThumbnails);
 });

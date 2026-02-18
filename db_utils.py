@@ -502,7 +502,7 @@ def fetch_recent_thumbnails(limit=8):
         query = """
         SELECT
             de.id AS event_id,
-            ei.image_data,
+            ei.id AS image_id,
             de.camera_plate_text AS plate_text
         FROM
             detection_events de
@@ -517,13 +517,12 @@ def fetch_recent_thumbnails(limit=8):
         cur.execute(query, (limit,))
         results = []
         for row in cur.fetchall():
-            event_id_val, image_data, plate_text = row
-            if image_data:
-                results.append({
-                    'event_id': event_id_val,
-                    'image_data': base64.b64encode(image_data).decode('utf-8'),
-                    'plate_text': plate_text
-                })
+            event_id_val, image_id_val, plate_text = row
+            results.append({
+                'event_id': str(event_id_val),
+                'image_id': str(image_id_val),
+                'plate_text': plate_text
+            })
         cur.close()
         return results
     except psycopg2.Error as e:
