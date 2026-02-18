@@ -4,6 +4,7 @@ import psycopg2.pool
 import base64
 import os
 import datetime
+import time
 logger = logging.getLogger(__name__)
 
 # Mapeo para normalizar marcas de vehículos
@@ -577,7 +578,6 @@ def fetch_filter_options():
     Results are cached for 300 seconds to avoid hammering the DB on every page load.
     Raises DBError on DB failure.
     """
-    import time
     global _filter_options_cache, _filter_options_cache_ts
     if _filter_options_cache is not None and (time.time() - _filter_options_cache_ts) < 300:
         return _filter_options_cache
@@ -621,7 +621,8 @@ def fetch_filter_options():
         logger.error("Error fetching filter options: %s", e)
         raise DBError("Database operation failed") from e
     finally:
-        _put_conn(conn)
+        if conn:
+            _put_conn(conn)
 
 def count_browsable_images(types, start_date=None, end_date=None, search_term=None):
     """Count browsable images filtered by type, date range, and plate search."""
