@@ -15,9 +15,7 @@ import db_utils
 from db_utils import DBError
 logging.basicConfig(level=logging.INFO)
 
-app = Flask(__name__)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)  # trust 1 X-Forwarded-For hop (Render.com)
-
+# Fail fast before creating the Flask app
 _AUTH_REQUIRED = ["SECRET_KEY", "LOGIN_USER", "LOGIN_PASSWORD"]
 _auth_missing = [v for v in _AUTH_REQUIRED if not os.environ.get(v)]
 if _auth_missing:
@@ -28,11 +26,15 @@ if _auth_missing:
     )
 del _auth_missing
 
+app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)  # trust 1 X-Forwarded-For hop (Render.com)
+
 app.secret_key = os.environ["SECRET_KEY"]
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-# Secure=True in production (HTTPS). Disabled when FLASK_DEBUG=true for local HTTP dev.
-app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_DEBUG", "false").lower() != "true"
+# Secure=True in production (HTTPS). Disabled when FLASK_DEBUG is a truthy value for local HTTP dev.
+_debug_values = {"true", "1", "yes", "on"}
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_DEBUG", "").lower() not in _debug_values
 
 _default_limit = os.environ.get("RATE_LIMIT_DEFAULT", "120 per minute")
 limiter = Limiter(
