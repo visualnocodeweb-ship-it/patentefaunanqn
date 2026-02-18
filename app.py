@@ -98,7 +98,7 @@ def health():
 
 
 @app.route('/login', methods=['GET', 'POST'])
-@limiter.exempt
+@limiter.limit("10 per minute", methods=["POST"])
 def login():
     """Login page. GET renders form; POST validates credentials."""
     if session.get('authenticated'):
