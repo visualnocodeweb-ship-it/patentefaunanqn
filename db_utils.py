@@ -3,10 +3,6 @@ import psycopg2
 import base64
 import os
 import datetime
-from dotenv import load_dotenv
-
-load_dotenv()
-
 logger = logging.getLogger(__name__)
 
 # Mapeo para normalizar marcas de vehículos
@@ -30,6 +26,16 @@ def normalize_vehicle_brand(brand):
     return brand.capitalize()
 
 # --- Configuración de la Base de Datos ---
+_REQUIRED_ENV_VARS = ["DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"]
+_missing = [v for v in _REQUIRED_ENV_VARS if not os.environ.get(v)]
+if _missing:
+    raise RuntimeError(
+        "db_utils: Missing required DB environment variables: "
+        + ", ".join(_missing)
+        + ". Set them in the environment or in a .env file."
+    )
+del _missing
+
 DB_HOST = os.environ["DB_HOST"]
 DB_NAME = os.environ["DB_NAME"]
 DB_USER = os.environ["DB_USER"]

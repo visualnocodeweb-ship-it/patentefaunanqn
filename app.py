@@ -1,12 +1,13 @@
 import logging
 import os
 import re
+from dotenv import load_dotenv
+
+load_dotenv()   # must be before db_utils import
+
 from flask import Flask, jsonify, request, render_template, Response
 from flask_cors import CORS
-from dotenv import load_dotenv
 import db_utils
-
-load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
