@@ -454,6 +454,7 @@ h1 {
 }
 
 /* Browse filters in modal */
+.browse-filters[hidden] { display: none; }
 .browse-filters {
     display: flex;
     gap: 16px;
