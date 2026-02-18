@@ -567,6 +567,62 @@ def fetch_recent_thumbnails(limit=8):
         if conn:
             _put_conn(conn)
 
+# In-process cache for filter options (invalidated after 300 s)
+_filter_options_cache = None
+_filter_options_cache_ts = 0.0
+
+def fetch_filter_options():
+    """
+    Returns unique sorted values for vehicle_brand, vehicle_color, vehicle_type.
+    Results are cached for 300 seconds to avoid hammering the DB on every page load.
+    Raises DBError on DB failure.
+    """
+    import time
+    global _filter_options_cache, _filter_options_cache_ts
+    if _filter_options_cache is not None and (time.time() - _filter_options_cache_ts) < 300:
+        return _filter_options_cache
+
+    conn = None
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT DISTINCT vehicle_brand FROM detection_events "
+            "WHERE vehicle_brand IS NOT NULL AND vehicle_brand <> ''"
+        )
+        raw_brands = [row[0] for row in cur.fetchall()]
+        brands = sorted({normalize_vehicle_brand(b) for b in raw_brands if b})
+
+        cur.execute(
+            "SELECT DISTINCT vehicle_color FROM detection_events "
+            "WHERE vehicle_color IS NOT NULL AND vehicle_color <> ''"
+        )
+        colors = sorted({row[0].strip() for row in cur.fetchall() if row[0] and row[0].strip()})
+
+        cur.execute(
+            "SELECT DISTINCT vehicle_type FROM detection_events "
+            "WHERE vehicle_type IS NOT NULL AND vehicle_type <> ''"
+        )
+        types = sorted({row[0].strip() for row in cur.fetchall() if row[0] and row[0].strip()})
+
+        cur.close()
+        result = {"brands": brands, "colors": colors, "types": types}
+        _filter_options_cache = result
+        _filter_options_cache_ts = time.time()
+        return result
+
+    except RuntimeError:
+        raise
+    except psycopg2.Error as e:
+        logger.error("Error fetching filter options: %s", e)
+        raise DBError("Database operation failed") from e
+    except Exception as e:
+        logger.error("Error fetching filter options: %s", e)
+        raise DBError("Database operation failed") from e
+    finally:
+        _put_conn(conn)
+
 def count_browsable_images(types, start_date=None, end_date=None, search_term=None):
     """Count browsable images filtered by type, date range, and plate search."""
     conn = None

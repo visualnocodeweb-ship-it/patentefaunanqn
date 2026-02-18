@@ -159,6 +159,15 @@ def recent_thumbnails():
         return jsonify({"error": "Service temporarily unavailable"}), 503
     return jsonify(thumbnails)
 
+@app.route('/api/filter_options')
+def filter_options():
+    """Returns unique sorted values for brand, color, and type dropdowns."""
+    try:
+        options = db_utils.fetch_filter_options()
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
+    return jsonify(options)
+
 @app.route('/api/search_plate', methods=['GET'])
 def search_plate():
     """
