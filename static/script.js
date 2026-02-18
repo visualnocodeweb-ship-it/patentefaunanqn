@@ -59,6 +59,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let tableAbort = null;
     let statsAbort = null;
 
+    // Redirect to login page on 401 (session expired or not authenticated)
+    function handle401(response) {
+        if (response.status === 401) {
+            window.location.href = '/login';
+            return true;
+        }
+        return false;
+    }
+
     // --- URL state management ---
     function getFiltersFromURL() {
         const params = new URLSearchParams(window.location.search);
@@ -242,6 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const response = await fetch(url, { signal: tableAbort.signal });
+            if (handle401(response)) return;
             const data = await response.json();
             displayPatentTableResults(data.patents);
             totalPages = Math.ceil(data.total_count / pageSize);
@@ -267,6 +277,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const response = await fetch(url, { signal: statsAbort.signal });
+            if (handle401(response)) return;
             const data = await response.json();
             renderStats(data);
         } catch (error) {
@@ -320,6 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchLatestThumbnails() {
         try {
             const response = await fetch('/api/recent_thumbnails?limit=7');
+            if (handle401(response)) return;
             const data = await response.json();
             thumbnailStrip.innerHTML = '';
             data.forEach(item => {
@@ -511,6 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
         imageModal.style.display = 'flex';
         try {
             const response = await fetch(`/api/image/${eventId}`);
+            if (handle401(response)) return;
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             hideSpinner();
@@ -601,6 +614,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const resp = await fetch('/api/browse_images?' + params, { signal: browseAbort.signal });
+            if (handle401(resp)) return 0;
             const data = await resp.json();
             if (direction === 'forward') browseItems.push(...data.images);
             else browseItems.unshift(...data.images);
@@ -680,6 +694,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const resp = await fetch('/api/browse_images?' + params);
+            if (handle401(resp)) return;
             const data = await resp.json();
             browseItems.push(...data.images);
         } catch (e) {
