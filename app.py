@@ -1,3 +1,4 @@
+import hmac
 import logging
 import os
 import re
@@ -16,6 +17,22 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)  # trust 1 X-Forwarded-For hop (Render.com)
+
+_AUTH_REQUIRED = ["SECRET_KEY", "LOGIN_USER", "LOGIN_PASSWORD"]
+_auth_missing = [v for v in _AUTH_REQUIRED if not os.environ.get(v)]
+if _auth_missing:
+    raise RuntimeError(
+        "Missing required auth environment variables: "
+        + ", ".join(_auth_missing)
+        + ". Set them in .env or the environment."
+    )
+del _auth_missing
+
+app.secret_key = os.environ["SECRET_KEY"]
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Secure=True in production (HTTPS). Disabled when FLASK_DEBUG=true for local HTTP dev.
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_DEBUG", "false").lower() != "true"
 
 _default_limit = os.environ.get("RATE_LIMIT_DEFAULT", "120 per minute")
 limiter = Limiter(
