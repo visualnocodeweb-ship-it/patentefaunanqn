@@ -47,6 +47,9 @@ DB_NAME = os.environ["DB_NAME"]
 DB_USER = os.environ["DB_USER"]
 DB_PASSWORD = os.environ["DB_PASSWORD"]
 
+# NOTE: `_pool` must remain a bare module-level name.
+# gunicorn.conf.py's post_fork hook rebinds it via `db_utils._pool = ...`
+# after forking each worker. Never cache `_pool` in a local or class variable.
 _pool = psycopg2.pool.ThreadedConnectionPool(
     minconn=int(os.environ.get("DB_POOL_MIN", "2")),
     maxconn=int(os.environ.get("DB_POOL_MAX", "10")),
