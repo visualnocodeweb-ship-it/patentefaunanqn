@@ -115,7 +115,7 @@ def login():
             session['authenticated'] = True
             next_url = request.form.get('next') or url_for('index')
             # Safety: only allow relative redirects (prevent open redirect)
-            if not next_url.startswith('/'):
+            if not next_url.startswith('/') or next_url.startswith('//'):
                 next_url = url_for('index')
             return redirect(next_url)
         error = 'Usuario o contraseña incorrectos.'
