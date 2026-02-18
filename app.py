@@ -220,8 +220,12 @@ def all_patents():
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 10, type=int)
     search_term = request.args.get('search_term', None, type=str)
-    brand_filter = request.args.get('brand_filter', None, type=str)
-    type_filter = request.args.get('type_filter', None, type=str)
+    brand_filter_raw = request.args.get('brand_filter', None, type=str)
+    color_filter_raw = request.args.get('color_filter', None, type=str)
+    type_filter_raw  = request.args.get('type_filter',  None, type=str)
+    brand_filter = [v.strip() for v in brand_filter_raw.split(',') if v.strip()] if brand_filter_raw else None
+    color_filter = [v.strip() for v in color_filter_raw.split(',') if v.strip()] if color_filter_raw else None
+    type_filter  = [v.strip() for v in type_filter_raw.split(',')  if v.strip()] if type_filter_raw  else None
     start_date_filter = request.args.get('start_date_filter', None, type=str)
     end_date_filter = request.args.get('end_date_filter', None, type=str)
     min_confidence_filter = request.args.get('min_confidence_filter', None, type=float)
@@ -239,6 +243,7 @@ def all_patents():
         patents, total_count = db_utils.fetch_all_patents_paginated(
             page, page_size, search_term,
             brand_filter=brand_filter,
+            color_filter=color_filter,
             type_filter=type_filter,
             start_date_filter=start_date_filter,
             end_date_filter=end_date_filter,

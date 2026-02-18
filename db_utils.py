@@ -345,8 +345,9 @@ def _validate_date(value):
     except (ValueError, TypeError):
         return None
 
-def _build_where_clause(search_term=None, brand_filter=None, type_filter=None,
-                        start_date_filter=None, end_date_filter=None, min_confidence_filter=None):
+def _build_where_clause(search_term=None, brand_filter=None, color_filter=None,
+                        type_filter=None, start_date_filter=None, end_date_filter=None,
+                        min_confidence_filter=None):
     """Builds a shared WHERE clause and params list for detection_events queries."""
     conditions = []
     params = []
@@ -354,11 +355,17 @@ def _build_where_clause(search_term=None, brand_filter=None, type_filter=None,
         conditions.append("camera_plate_text ILIKE %s")
         params.append(f'%{search_term}%')
     if brand_filter:
-        conditions.append("vehicle_brand ILIKE %s")
-        params.append(f'%{brand_filter}%')
+        placeholders = ','.join(['%s'] * len(brand_filter))
+        conditions.append(f"vehicle_brand IN ({placeholders})")
+        params.extend(brand_filter)
+    if color_filter:
+        placeholders = ','.join(['%s'] * len(color_filter))
+        conditions.append(f"vehicle_color IN ({placeholders})")
+        params.extend(color_filter)
     if type_filter:
-        conditions.append("vehicle_type ILIKE %s")
-        params.append(f'%{type_filter}%')
+        placeholders = ','.join(['%s'] * len(type_filter))
+        conditions.append(f"vehicle_type IN ({placeholders})")
+        params.extend(type_filter)
     start_date_filter = _validate_date(start_date_filter)
     if start_date_filter:
         conditions.append("created_at >= %s")
@@ -377,8 +384,8 @@ def _build_where_clause(search_term=None, brand_filter=None, type_filter=None,
     return clause, params
 
 def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_filter=None,
-                                type_filter=None, start_date_filter=None, end_date_filter=None,
-                                min_confidence_filter=None):
+                                color_filter=None, type_filter=None, start_date_filter=None,
+                                end_date_filter=None, min_confidence_filter=None):
     """
     Recupera todos los datos de patente de detection_events con paginación, búsqueda y filtros.
     Incluye conteo de avistamientos por patente (sightings) via window function.
@@ -393,7 +400,7 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
 
         offset = (page - 1) * page_size
         where_clause, query_params = _build_where_clause(
-            search_term, brand_filter, type_filter,
+            search_term, brand_filter, color_filter, type_filter,
             start_date_filter, end_date_filter, min_confidence_filter
         )
 
