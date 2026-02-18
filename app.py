@@ -7,10 +7,29 @@ load_dotenv()   # must be before db_utils import
 
 from flask import Flask, jsonify, request, render_template, Response
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from werkzeug.middleware.proxy_fix import ProxyFix
 import db_utils
 logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)  # trust 1 X-Forwarded-For hop (Render.com)
+
+_default_limit = os.environ.get("RATE_LIMIT_DEFAULT", "120 per minute")
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[_default_limit],
+    storage_uri="memory://",  # For multi-worker: set REDIS_URL and use storage_uri=os.environ.get("REDIS_URL", "memory://")
+)
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    response = jsonify({"error": "rate limit exceeded"})
+    response.headers["Retry-After"] = e.description
+    return response, 429
+
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()] or ["*"]
 CORS(
     app,
@@ -37,6 +56,7 @@ def index():
     return render_template('index.html')
 
 @app.route('/api/latest_images')
+@limiter.limit("60 per minute")
 def latest_images():
     """Fetches the latest images and associated plate detection data."""
     limit = request.args.get('limit', 5, type=int)
@@ -66,6 +86,7 @@ def search_plate():
     return jsonify(results)
 
 @app.route('/api/images_by_datetime', methods=['GET'])
+@limiter.limit("20 per minute")
 def images_by_datetime():
     """
     Fetches images and associated plate detection data within a specified datetime range.
@@ -141,6 +162,7 @@ def stats():
 _VALID_BROWSE_TYPES = {'vehicle_detection', 'vehicle_picture', 'plate'}
 
 @app.route('/api/browse_images', methods=['GET'])
+@limiter.limit("30 per minute")
 def browse_images():
     """Keyset-paginated image metadata for the global carousel."""
     cursor_ts = request.args.get('cursor_ts', None, type=str)
@@ -178,6 +200,7 @@ def browse_images():
 
 
 @app.route('/api/browse_image/<image_id>', methods=['GET'])
+@limiter.limit("30 per minute")
 def browse_image(image_id):
     """Serves raw image bytes for a single image by ID."""
     if not _UUID_RE.match(image_id):
