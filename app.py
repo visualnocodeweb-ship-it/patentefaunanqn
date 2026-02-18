@@ -50,6 +50,18 @@ def set_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     return response
 
+@app.route('/health')
+def health():
+    """DB liveness probe. No rate limit — must be reachable by load balancers and uptime monitors."""
+    try:
+        ok = db_utils.ping_db()
+    except RuntimeError:
+        return jsonify({"status": "error", "detail": "DB pool exhausted"}), 503
+    if ok:
+        return jsonify({"status": "ok"}), 200
+    return jsonify({"status": "error", "detail": "DB query failed"}), 503
+
+
 @app.route('/')
 def index():
     """Renders the main application page."""

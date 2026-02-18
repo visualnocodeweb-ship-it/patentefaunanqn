@@ -69,6 +69,26 @@ def _put_conn(conn):
     if conn:
         _pool.putconn(conn)
 
+def ping_db():
+    """
+    Check DB liveness by executing SELECT 1.
+    Returns True on success, False on psycopg2.Error (logged).
+    Raises RuntimeError on pool exhaustion (propagated from _get_conn).
+    """
+    conn = None
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
+        return True
+    except psycopg2.Error as e:
+        logger.error("DB liveness check failed: %s", e)
+        return False
+    finally:
+        _put_conn(conn)
+
+
 def fetch_latest_images(limit=5): # Reducido el límite para depuración
     """
     Recupera las últimas imágenes y sus datos de detección de patente.
