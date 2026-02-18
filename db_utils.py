@@ -26,6 +26,11 @@ def normalize_vehicle_brand(brand):
     # Si no se encuentra en el mapa, intentar capitalizar la primera letra (esto es un guess, podría no ser lo mejor)
     return brand.capitalize()
 
+
+class DBError(Exception):
+    """Raised when a database operation fails."""
+
+
 # --- Configuración de la Base de Datos ---
 _REQUIRED_ENV_VARS = ["DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"]
 _missing = [v for v in _REQUIRED_ENV_VARS if not os.environ.get(v)]
@@ -137,12 +142,12 @@ def fetch_latest_images(limit=5): # Reducido el límite para depuración
 
     except psycopg2.Error as e:
         logger.error("Error de base de datos al obtener últimas imágenes: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al obtener últimas imágenes: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     finally:
         if conn:
             _put_conn(conn)
@@ -191,12 +196,12 @@ def fetch_new_images_for_download(last_timestamp=None):
 
     except psycopg2.Error as e:
         logger.error("Error de base de datos al obtener nuevas imágenes para descarga: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al obtener nuevas imágenes para descarga: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     finally:
         if conn:
             _put_conn(conn)
@@ -259,12 +264,12 @@ def fetch_images_by_datetime_range(start_datetime_str, end_datetime_str, limit=5
         return []
     except psycopg2.Error as e:
         logger.error("Error de base de datos al buscar por rango de fecha/hora: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al buscar por rango de fecha/hora: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     finally:
         if conn:
             _put_conn(conn)
@@ -316,12 +321,12 @@ def search_by_plate_text(plate_text, limit=50):
 
     except psycopg2.Error as e:
         logger.error("Error de base de datos al buscar por patente: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al buscar por patente: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     finally:
         if conn:
             _put_conn(conn)
@@ -440,12 +445,12 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
         return [], 0
     except psycopg2.Error as e:
         logger.error("Error de base de datos al obtener patentes paginadas: %s", e)
-        return [], 0
+        raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al obtener patentes paginadas: %s", e)
-        return [], 0
+        raise DBError("Database operation failed") from e
     finally:
         if conn:
             _put_conn(conn)
@@ -502,12 +507,12 @@ def fetch_stats(start_date_filter=None, end_date_filter=None):
 
     except psycopg2.Error as e:
         logger.error("Error al obtener estadísticas: %s", e)
-        return None
+        raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
         logger.error("Error al obtener estadísticas: %s", e)
-        return None
+        raise DBError("Database operation failed") from e
     finally:
         if conn:
             _put_conn(conn)
@@ -549,12 +554,12 @@ def fetch_recent_thumbnails(limit=8):
         return results
     except psycopg2.Error as e:
         logger.error("Error fetching recent thumbnails: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
         logger.error("Unexpected error fetching recent thumbnails: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     finally:
         if conn:
             _put_conn(conn)
@@ -593,12 +598,12 @@ def count_browsable_images(types, start_date=None, end_date=None, search_term=No
         return count
     except psycopg2.Error as e:
         logger.error("Error counting browsable images: %s", e)
-        return 0
+        raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
         logger.error("Error counting browsable images: %s", e)
-        return 0
+        raise DBError("Database operation failed") from e
     finally:
         if conn:
             _put_conn(conn)
@@ -675,12 +680,12 @@ def fetch_browsable_images(cursor_ts=None, cursor_id=None, limit=5, direction='f
         return results
     except psycopg2.Error as e:
         logger.error("Error fetching browsable images: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
         logger.error("Error fetching browsable images: %s", e)
-        return []
+        raise DBError("Database operation failed") from e
     finally:
         if conn:
             _put_conn(conn)
@@ -700,12 +705,12 @@ def fetch_browse_image_by_id(image_id):
         return None
     except psycopg2.Error as e:
         logger.error("Error fetching browse image by id: %s", e)
-        return None
+        raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
         logger.error("Error fetching browse image by id: %s", e)
-        return None
+        raise DBError("Database operation failed") from e
     finally:
         if conn:
             _put_conn(conn)
@@ -753,12 +758,12 @@ def fetch_image_by_event_id(event_id):
 
     except psycopg2.Error as e:
         logger.error("Error de base de datos al obtener imagen por event_id: %s", e)
-        return None
+        raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al obtener imagen por event_id: %s", e)
-        return None
+        raise DBError("Database operation failed") from e
     finally:
         if conn:
             _put_conn(conn)

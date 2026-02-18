@@ -11,6 +11,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 import db_utils
+from db_utils import DBError
 logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
@@ -74,7 +75,10 @@ def latest_images():
     """Fetches the latest images and associated plate detection data."""
     limit = request.args.get('limit', 5, type=int)
     limit = max(1, min(50, limit))
-    images = db_utils.fetch_latest_images(limit=limit)
+    try:
+        images = db_utils.fetch_latest_images(limit=limit)
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
     return jsonify(images)
 
 @app.route('/api/recent_thumbnails')
@@ -82,7 +86,10 @@ def recent_thumbnails():
     """Fetches recent vehicle_picture thumbnails for the strip."""
     limit = request.args.get('limit', 8, type=int)
     limit = max(1, min(20, limit))
-    thumbnails = db_utils.fetch_recent_thumbnails(limit=limit)
+    try:
+        thumbnails = db_utils.fetch_recent_thumbnails(limit=limit)
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
     return jsonify(thumbnails)
 
 @app.route('/api/search_plate', methods=['GET'])
@@ -95,7 +102,10 @@ def search_plate():
     if not plate_text:
         return jsonify({"error": "Missing 'plate' query parameter"}), 400
 
-    results = db_utils.search_by_plate_text(plate_text)
+    try:
+        results = db_utils.search_by_plate_text(plate_text)
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
     return jsonify(results)
 
 @app.route('/api/images_by_datetime', methods=['GET'])
@@ -114,10 +124,13 @@ def images_by_datetime():
         return jsonify({"error": "Missing 'start_datetime' or 'end_datetime' query parameter"}), 400
 
     # Pass the limit if provided, otherwise use the default in db_utils
-    if limit is not None:
-        results = db_utils.fetch_images_by_datetime_range(start_datetime, end_datetime, limit=limit)
-    else:
-        results = db_utils.fetch_images_by_datetime_range(start_datetime, end_datetime)
+    try:
+        if limit is not None:
+            results = db_utils.fetch_images_by_datetime_range(start_datetime, end_datetime, limit=limit)
+        else:
+            results = db_utils.fetch_images_by_datetime_range(start_datetime, end_datetime)
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
 
     return jsonify(results)
 
@@ -146,14 +159,17 @@ def all_patents():
     if min_confidence_filter is not None:
         min_confidence_filter = max(0.0, min(1.0, min_confidence_filter))
 
-    patents, total_count = db_utils.fetch_all_patents_paginated(
-        page, page_size, search_term,
-        brand_filter=brand_filter,
-        type_filter=type_filter,
-        start_date_filter=start_date_filter,
-        end_date_filter=end_date_filter,
-        min_confidence_filter=min_confidence_filter
-    )
+    try:
+        patents, total_count = db_utils.fetch_all_patents_paginated(
+            page, page_size, search_term,
+            brand_filter=brand_filter,
+            type_filter=type_filter,
+            start_date_filter=start_date_filter,
+            end_date_filter=end_date_filter,
+            min_confidence_filter=min_confidence_filter
+        )
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
 
     return jsonify({
         'patents': patents,
@@ -167,7 +183,10 @@ def stats():
     """Fetches aggregate statistics for detection events."""
     start_date = request.args.get('start_date', None, type=str)
     end_date = request.args.get('end_date', None, type=str)
-    result = db_utils.fetch_stats(start_date_filter=start_date, end_date_filter=end_date)
+    try:
+        result = db_utils.fetch_stats(start_date_filter=start_date, end_date_filter=end_date)
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
     if result:
         return jsonify(result)
     return jsonify({"error": "Failed to fetch stats"}), 500
@@ -195,19 +214,25 @@ def browse_images():
     end_date = request.args.get('end_date', None, type=str)
     search_term = request.args.get('search_term', None, type=str)
 
-    images = db_utils.fetch_browsable_images(
-        cursor_ts=cursor_ts, cursor_id=cursor_id, limit=limit,
-        direction=direction, types=types,
-        start_date=start_date, end_date=end_date, search_term=search_term
-    )
+    try:
+        images = db_utils.fetch_browsable_images(
+            cursor_ts=cursor_ts, cursor_id=cursor_id, limit=limit,
+            direction=direction, types=types,
+            start_date=start_date, end_date=end_date, search_term=search_term
+        )
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
 
     result = {'images': images}
 
     # Only include total_count on first request (no cursor)
     if not cursor_ts:
-        result['total_count'] = db_utils.count_browsable_images(
-            types, start_date=start_date, end_date=end_date, search_term=search_term
-        )
+        try:
+            result['total_count'] = db_utils.count_browsable_images(
+                types, start_date=start_date, end_date=end_date, search_term=search_term
+            )
+        except (DBError, RuntimeError):
+            return jsonify({"error": "Service temporarily unavailable"}), 503
 
     return jsonify(result)
 
@@ -218,7 +243,10 @@ def browse_image(image_id):
     """Serves raw image bytes for a single image by ID."""
     if not _UUID_RE.match(image_id):
         return jsonify({"error": "Invalid image_id format"}), 400
-    data = db_utils.fetch_browse_image_by_id(image_id)
+    try:
+        data = db_utils.fetch_browse_image_by_id(image_id)
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
     if not data:
         return jsonify({"error": "Image not found"}), 404
     return Response(
@@ -235,7 +263,10 @@ def get_image(event_id):
     """
     if not _UUID_RE.match(event_id):
         return jsonify({"error": "Invalid event_id format"}), 400
-    images = db_utils.fetch_image_by_event_id(event_id)
+    try:
+        images = db_utils.fetch_image_by_event_id(event_id)
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
     if images:
         return jsonify({"images": images})
     return jsonify({"error": "Image not found for this event_id"}), 404
