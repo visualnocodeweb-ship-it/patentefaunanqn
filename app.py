@@ -97,6 +97,40 @@ def health():
     return jsonify({"status": "error", "detail": "DB query failed"}), 503
 
 
+@app.route('/login', methods=['GET', 'POST'])
+@limiter.exempt
+def login():
+    """Login page. GET renders form; POST validates credentials."""
+    if session.get('authenticated'):
+        return redirect(url_for('index'))
+
+    error = None
+    if request.method == 'POST':
+        submitted_user = request.form.get('username', '')
+        submitted_pass = request.form.get('password', '')
+        valid_user = hmac.compare_digest(submitted_user, os.environ['LOGIN_USER'])
+        valid_pass = hmac.compare_digest(submitted_pass, os.environ['LOGIN_PASSWORD'])
+        if valid_user and valid_pass:
+            session.clear()
+            session['authenticated'] = True
+            next_url = request.form.get('next') or url_for('index')
+            # Safety: only allow relative redirects (prevent open redirect)
+            if not next_url.startswith('/'):
+                next_url = url_for('index')
+            return redirect(next_url)
+        error = 'Usuario o contraseña incorrectos.'
+
+    next_url = request.args.get('next', '')
+    return render_template('login.html', error=error, next=next_url)
+
+
+@app.route('/logout')
+def logout():
+    """Clear session and redirect to login."""
+    session.clear()
+    return redirect(url_for('login'))
+
+
 @app.route('/')
 def index():
     """Renders the main application page."""
