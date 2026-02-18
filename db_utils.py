@@ -82,6 +82,8 @@ def ping_db():
         cur.execute("SELECT 1")
         cur.close()
         return True
+    except RuntimeError:
+        raise
     except psycopg2.Error as e:
         logger.error("DB liveness check failed: %s", e)
         return False

@@ -51,6 +51,7 @@ def set_security_headers(response):
     return response
 
 @app.route('/health')
+@limiter.exempt
 def health():
     """DB liveness probe. No rate limit — must be reachable by load balancers and uptime monitors."""
     try:
