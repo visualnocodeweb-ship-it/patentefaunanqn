@@ -1,5 +1,6 @@
 import logging
 import psycopg2
+import psycopg2.pool
 import base64
 import os
 import datetime
@@ -41,13 +42,32 @@ DB_NAME = os.environ["DB_NAME"]
 DB_USER = os.environ["DB_USER"]
 DB_PASSWORD = os.environ["DB_PASSWORD"]
 
-def get_db_connection():
-    """Establece y devuelve una conexión a la base de datos."""
-    conn = psycopg2.connect(
-        host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASSWORD,
-        connect_timeout=10
-    )
-    return conn
+_pool = psycopg2.pool.ThreadedConnectionPool(
+    minconn=int(os.environ.get("DB_POOL_MIN", "2")),
+    maxconn=int(os.environ.get("DB_POOL_MAX", "10")),
+    host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASSWORD,
+    connect_timeout=10,
+    options="-c statement_timeout=30000",  # 30 000 ms = 30 s
+    keepalives=1,
+    keepalives_idle=30,
+    keepalives_interval=5,
+    keepalives_count=5,
+)
+
+
+def _get_conn():
+    """Check out a connection from the pool. Raises RuntimeError on pool exhaustion."""
+    try:
+        return _pool.getconn()
+    except psycopg2.pool.PoolError as e:
+        logger.error("DB connection pool exhausted: %s", e)
+        raise RuntimeError("DB connection pool exhausted") from e
+
+
+def _put_conn(conn):
+    """Return a connection to the pool."""
+    if conn:
+        _pool.putconn(conn)
 
 def fetch_latest_images(limit=5): # Reducido el límite para depuración
     """
@@ -56,7 +76,7 @@ def fetch_latest_images(limit=5): # Reducido el límite para depuración
     """
     conn = None
     try:
-        conn = get_db_connection()
+        conn = _get_conn()
         cur = conn.cursor()
 
         query = """
@@ -96,12 +116,14 @@ def fetch_latest_images(limit=5): # Reducido el límite para depuración
     except psycopg2.Error as e:
         logger.error("Error de base de datos al obtener últimas imágenes: %s", e)
         return []
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al obtener últimas imágenes: %s", e)
         return []
     finally:
         if conn:
-            conn.close()
+            _put_conn(conn)
 
 
 def fetch_new_images_for_download(last_timestamp=None):
@@ -111,7 +133,7 @@ def fetch_new_images_for_download(last_timestamp=None):
     """
     conn = None
     try:
-        conn = get_db_connection()
+        conn = _get_conn()
         cur = conn.cursor()
 
         query = """
@@ -148,12 +170,14 @@ def fetch_new_images_for_download(last_timestamp=None):
     except psycopg2.Error as e:
         logger.error("Error de base de datos al obtener nuevas imágenes para descarga: %s", e)
         return []
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al obtener nuevas imágenes para descarga: %s", e)
         return []
     finally:
         if conn:
-            conn.close()
+            _put_conn(conn)
 
 def fetch_images_by_datetime_range(start_datetime_str, end_datetime_str, limit=500):
     """
@@ -162,7 +186,7 @@ def fetch_images_by_datetime_range(start_datetime_str, end_datetime_str, limit=5
     """
     conn = None
     try:
-        conn = get_db_connection()
+        conn = _get_conn()
         cur = conn.cursor()
 
         # Convertir cadenas a objetos datetime para la consulta
@@ -214,12 +238,14 @@ def fetch_images_by_datetime_range(start_datetime_str, end_datetime_str, limit=5
     except psycopg2.Error as e:
         logger.error("Error de base de datos al buscar por rango de fecha/hora: %s", e)
         return []
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al buscar por rango de fecha/hora: %s", e)
         return []
     finally:
         if conn:
-            conn.close()
+            _put_conn(conn)
 
 def search_by_plate_text(plate_text, limit=50):
     """
@@ -228,7 +254,7 @@ def search_by_plate_text(plate_text, limit=50):
     """
     conn = None
     try:
-        conn = get_db_connection()
+        conn = _get_conn()
         cur = conn.cursor()
 
         query = """
@@ -269,12 +295,14 @@ def search_by_plate_text(plate_text, limit=50):
     except psycopg2.Error as e:
         logger.error("Error de base de datos al buscar por patente: %s", e)
         return []
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al buscar por patente: %s", e)
         return []
     finally:
         if conn:
-            conn.close()
+            _put_conn(conn)
 
 def _validate_date(value):
     """Validate and return an ISO date/datetime string, or None if invalid."""
@@ -329,7 +357,7 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
     patents = []
     total_count = 0
     try:
-        conn = get_db_connection()
+        conn = _get_conn()
         cur = conn.cursor()
 
         offset = (page - 1) * page_size
@@ -385,15 +413,20 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
         cur.close()
         return patents, total_count
 
-    except (ValueError, TypeError, psycopg2.Error) as e:
-        logger.error("Error de base de datos al obtener patentes paginadas o en el formato de fecha: %s", e)
+    except (ValueError, TypeError) as e:
+        logger.error("Error en el formato de fecha/hora al obtener patentes paginadas: %s", e)
         return [], 0
+    except psycopg2.Error as e:
+        logger.error("Error de base de datos al obtener patentes paginadas: %s", e)
+        return [], 0
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al obtener patentes paginadas: %s", e)
         return [], 0
     finally:
         if conn:
-            conn.close()
+            _put_conn(conn)
 
 def fetch_stats(start_date_filter=None, end_date_filter=None):
     """
@@ -402,7 +435,7 @@ def fetch_stats(start_date_filter=None, end_date_filter=None):
     """
     conn = None
     try:
-        conn = get_db_connection()
+        conn = _get_conn()
         cur = conn.cursor()
 
         where_clause, params = _build_where_clause(
@@ -445,12 +478,17 @@ def fetch_stats(start_date_filter=None, end_date_filter=None):
         cur.close()
         return result
 
-    except (psycopg2.Error, Exception) as e:
+    except psycopg2.Error as e:
+        logger.error("Error al obtener estadísticas: %s", e)
+        return None
+    except RuntimeError:
+        raise
+    except Exception as e:
         logger.error("Error al obtener estadísticas: %s", e)
         return None
     finally:
         if conn:
-            conn.close()
+            _put_conn(conn)
 
 def fetch_recent_thumbnails(limit=8):
     """
@@ -459,7 +497,7 @@ def fetch_recent_thumbnails(limit=8):
     """
     conn = None
     try:
-        conn = get_db_connection()
+        conn = _get_conn()
         cur = conn.cursor()
         query = """
         SELECT
@@ -491,18 +529,20 @@ def fetch_recent_thumbnails(limit=8):
     except psycopg2.Error as e:
         logger.error("Error fetching recent thumbnails: %s", e)
         return []
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error("Unexpected error fetching recent thumbnails: %s", e)
         return []
     finally:
         if conn:
-            conn.close()
+            _put_conn(conn)
 
 def count_browsable_images(types, start_date=None, end_date=None, search_term=None):
     """Count browsable images filtered by type, date range, and plate search."""
     conn = None
     try:
-        conn = get_db_connection()
+        conn = _get_conn()
         cur = conn.cursor()
         conditions = []
         params = []
@@ -530,12 +570,17 @@ def count_browsable_images(types, start_date=None, end_date=None, search_term=No
         count = cur.fetchone()[0]
         cur.close()
         return count
-    except (psycopg2.Error, Exception) as e:
+    except psycopg2.Error as e:
+        logger.error("Error counting browsable images: %s", e)
+        return 0
+    except RuntimeError:
+        raise
+    except Exception as e:
         logger.error("Error counting browsable images: %s", e)
         return 0
     finally:
         if conn:
-            conn.close()
+            _put_conn(conn)
 
 
 def fetch_browsable_images(cursor_ts=None, cursor_id=None, limit=5, direction='forward',
@@ -543,7 +588,7 @@ def fetch_browsable_images(cursor_ts=None, cursor_id=None, limit=5, direction='f
     """Keyset-paginated image metadata (no image_data). Returns list of dicts."""
     conn = None
     try:
-        conn = get_db_connection()
+        conn = _get_conn()
         cur = conn.cursor()
         conditions = []
         params = []
@@ -607,19 +652,24 @@ def fetch_browsable_images(cursor_ts=None, cursor_id=None, limit=5, direction='f
 
         cur.close()
         return results
-    except (psycopg2.Error, Exception) as e:
+    except psycopg2.Error as e:
+        logger.error("Error fetching browsable images: %s", e)
+        return []
+    except RuntimeError:
+        raise
+    except Exception as e:
         logger.error("Error fetching browsable images: %s", e)
         return []
     finally:
         if conn:
-            conn.close()
+            _put_conn(conn)
 
 
 def fetch_browse_image_by_id(image_id):
     """Fetch raw image bytes and type for a single image by ID."""
     conn = None
     try:
-        conn = get_db_connection()
+        conn = _get_conn()
         cur = conn.cursor()
         cur.execute("SELECT image_data, image_type FROM event_images WHERE id = %s", (str(image_id),))
         row = cur.fetchone()
@@ -627,12 +677,17 @@ def fetch_browse_image_by_id(image_id):
         if row and row[0]:
             return {'image_data': bytes(row[0]), 'image_type': row[1]}
         return None
-    except (psycopg2.Error, Exception) as e:
+    except psycopg2.Error as e:
+        logger.error("Error fetching browse image by id: %s", e)
+        return None
+    except RuntimeError:
+        raise
+    except Exception as e:
         logger.error("Error fetching browse image by id: %s", e)
         return None
     finally:
         if conn:
-            conn.close()
+            _put_conn(conn)
 
 
 def fetch_image_by_event_id(event_id):
@@ -642,7 +697,7 @@ def fetch_image_by_event_id(event_id):
     """
     conn = None
     try:
-        conn = get_db_connection()
+        conn = _get_conn()
         cur = conn.cursor()
         try:
             query = """
@@ -678,9 +733,11 @@ def fetch_image_by_event_id(event_id):
     except psycopg2.Error as e:
         logger.error("Error de base de datos al obtener imagen por event_id: %s", e)
         return None
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error("Un error inesperado ocurrió al obtener imagen por event_id: %s", e)
         return None
     finally:
         if conn:
-            conn.close()
+            _put_conn(conn)
