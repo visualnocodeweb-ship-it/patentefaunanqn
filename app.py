@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()   # must be before db_utils import
 
-from flask import Flask, jsonify, request, render_template, Response
+from flask import Flask, jsonify, request, render_template, Response, session, redirect, url_for
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -35,6 +35,20 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 # Secure=True in production (HTTPS). Disabled when FLASK_DEBUG is a truthy value for local HTTP dev.
 _debug_values = {"true", "1", "yes", "on"}
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_DEBUG", "").lower() not in _debug_values
+
+_PUBLIC_PATHS = {'/login', '/logout', '/health'}
+
+@app.before_request
+def require_login():
+    """Block unauthenticated access to all routes except login, logout, health, and static assets."""
+    if request.path in _PUBLIC_PATHS or request.path.startswith('/static/'):
+        return  # allow through
+    if session.get('authenticated'):
+        return  # allow through
+    # API callers get JSON 401; browsers get a redirect
+    if request.path.startswith('/api/'):
+        return jsonify({"error": "Unauthorized"}), 401
+    return redirect(url_for('login', next=request.path))
 
 _default_limit = os.environ.get("RATE_LIMIT_DEFAULT", "120 per minute")
 limiter = Limiter(
