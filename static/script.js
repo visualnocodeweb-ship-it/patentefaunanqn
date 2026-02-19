@@ -262,6 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentEndDateFilter   = filterEndDate.value;
         currentMinConfidenceFilter = '';
         currentPage = 1;
+        updateViewAllBtn();
     }
 
     function triggerFilteredFetch() {
@@ -486,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 thumbnailStrip.appendChild(img);
             });
             // "Ver Todas" button
-            const viewAllBtn = document.createElement('button');
+            viewAllBtn = document.createElement('button');
             viewAllBtn.className = 'thumbnail view-all-btn';
             viewAllBtn.textContent = 'Ver Todas';
             viewAllBtn.addEventListener('click', openBrowseCarousel);
@@ -552,6 +553,7 @@ document.addEventListener('DOMContentLoaded', () => {
         filterEndDate.value = '';
         document.querySelectorAll('.time-preset-btn').forEach(b => b.classList.remove('active'));
         triggerFilteredFetch();
+        updateViewAllBtn();
     });
 
     // --- Time preset buttons ---
@@ -607,6 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentPage = 1;
             fetchPatentsTableData();
             fetchStats();
+            updateViewAllBtn();
         });
     });
 
@@ -849,6 +852,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Prefetch metadata + preload image binaries into browser cache
     let prefetchInFlight = false;
+    let viewAllBtn = null;
+
+    function updateViewAllBtn() {
+        if (!viewAllBtn) return;
+        const hasFilter = currentPatentFilter ||
+            currentBrandFilter.length ||
+            currentColorFilter.length ||
+            currentTypeFilter.length  ||
+            currentStartDateFilter    ||
+            currentEndDateFilter;
+        viewAllBtn.textContent = hasFilter ? 'Ver Selección' : 'Ver Todas';
+    }
+
     async function browsePrefetch() {
         if (prefetchInFlight) return;
         prefetchInFlight = true;
