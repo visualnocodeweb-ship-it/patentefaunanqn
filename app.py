@@ -294,12 +294,21 @@ def browse_images():
     start_date = request.args.get('start_date', None, type=str)
     end_date = request.args.get('end_date', None, type=str)
     search_term = request.args.get('search_term', None, type=str)
+    brand_filter_raw  = request.args.get('brand_filter',        None, type=str)
+    color_filter_raw  = request.args.get('color_filter',        None, type=str)
+    vtype_filter_raw  = request.args.get('vehicle_type_filter', None, type=str)
+    brand_filter  = [v.strip() for v in brand_filter_raw.split(',')  if v.strip()] if brand_filter_raw  else None
+    color_filter  = [v.strip() for v in color_filter_raw.split(',')  if v.strip()] if color_filter_raw  else None
+    vtype_filter  = [v.strip() for v in vtype_filter_raw.split(',')  if v.strip()] if vtype_filter_raw  else None
 
     try:
         images = db_utils.fetch_browsable_images(
             cursor_ts=cursor_ts, cursor_id=cursor_id, limit=limit,
             direction=direction, types=types,
-            start_date=start_date, end_date=end_date, search_term=search_term
+            start_date=start_date, end_date=end_date, search_term=search_term,
+            brand_filter=brand_filter,
+            color_filter=color_filter,
+            vehicle_type_filter=vtype_filter,
         )
     except (DBError, RuntimeError):
         return jsonify({"error": "Service temporarily unavailable"}), 503
@@ -310,7 +319,10 @@ def browse_images():
     if not cursor_ts:
         try:
             result['total_count'] = db_utils.count_browsable_images(
-                types, start_date=start_date, end_date=end_date, search_term=search_term
+                types, start_date=start_date, end_date=end_date, search_term=search_term,
+                brand_filter=brand_filter,
+                color_filter=color_filter,
+                vehicle_type_filter=vtype_filter,
             )
         except (DBError, RuntimeError):
             return jsonify({"error": "Service temporarily unavailable"}), 503
