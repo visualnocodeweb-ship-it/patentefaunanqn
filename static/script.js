@@ -492,6 +492,7 @@ document.addEventListener('DOMContentLoaded', () => {
             viewAllBtn.textContent = 'Ver Todas';
             viewAllBtn.addEventListener('click', openBrowseCarousel);
             thumbnailStrip.appendChild(viewAllBtn);
+            updateViewAllBtn();
         } catch (error) {
             console.error('Error fetching thumbnails:', error);
         }
@@ -553,7 +554,6 @@ document.addEventListener('DOMContentLoaded', () => {
         filterEndDate.value = '';
         document.querySelectorAll('.time-preset-btn').forEach(b => b.classList.remove('active'));
         triggerFilteredFetch();
-        updateViewAllBtn();
     });
 
     // --- Time preset buttons ---
