@@ -785,6 +785,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentStartDateFilter) params.set('start_date', currentStartDateFilter);
         if (currentEndDateFilter) params.set('end_date', currentEndDateFilter);
         if (currentPatentFilter) params.set('search_term', currentPatentFilter);
+        if (currentBrandFilter.length)  params.set('brand_filter',        currentBrandFilter.join(','));
+        if (currentColorFilter.length)  params.set('color_filter',        currentColorFilter.join(','));
+        if (currentTypeFilter.length)   params.set('vehicle_type_filter', currentTypeFilter.join(','));
 
         try {
             const resp = await fetch(`${BASE}/api/browse_images?` + params, { signal: browseAbort.signal });
@@ -878,6 +881,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentStartDateFilter) params.set('start_date', currentStartDateFilter);
         if (currentEndDateFilter) params.set('end_date', currentEndDateFilter);
         if (currentPatentFilter) params.set('search_term', currentPatentFilter);
+        if (currentBrandFilter.length)  params.set('brand_filter',        currentBrandFilter.join(','));
+        if (currentColorFilter.length)  params.set('color_filter',        currentColorFilter.join(','));
+        if (currentTypeFilter.length)   params.set('vehicle_type_filter', currentTypeFilter.join(','));
 
         try {
             const resp = await fetch(`${BASE}/api/browse_images?` + params);
