@@ -17,7 +17,7 @@ function debounce(fn, delay) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const BASE = window.APP_BASE || '';
+    const BASE = document.querySelector('meta[name="app-base"]')?.content || '';
 
     // --- DOM refs ---
     const thumbnailStrip = document.getElementById('latest-thumbnails');
