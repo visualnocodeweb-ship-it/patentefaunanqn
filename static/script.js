@@ -17,6 +17,8 @@ function debounce(fn, delay) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    const BASE = window.APP_BASE || '';
+
     // --- DOM refs ---
     const thumbnailStrip = document.getElementById('latest-thumbnails');
     const patentTableBody = document.querySelector('#patent-table tbody');
@@ -374,7 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tableAbort = new AbortController();
 
         patentTableBody.innerHTML = '<tr><td colspan="8">Cargando patentes\u2026</td></tr>';
-        let url = `/api/all_patents?page=${currentPage}&page_size=${pageSize}`;
+        let url = `${BASE}/api/all_patents?page=${currentPage}&page_size=${pageSize}`;
         if (currentPatentFilter) url += `&search_term=${encodeURIComponent(currentPatentFilter)}`;
         if (currentBrandFilter.length) url += `&brand_filter=${encodeURIComponent(currentBrandFilter.join(','))}`;
         if (currentColorFilter.length) url += `&color_filter=${encodeURIComponent(currentColorFilter.join(','))}`;
@@ -406,7 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statsAbort) statsAbort.abort();
         statsAbort = new AbortController();
 
-        let url = '/api/stats';
+        let url = `${BASE}/api/stats`;
         const params = new URLSearchParams();
         if (currentStartDateFilter) params.set('start_date', currentStartDateFilter);
         if (currentEndDateFilter) params.set('end_date', currentEndDateFilter);
@@ -468,14 +470,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Thumbnails ---
     async function fetchLatestThumbnails() {
         try {
-            const response = await fetch('/api/recent_thumbnails?limit=7');
+            const response = await fetch(`${BASE}/api/recent_thumbnails?limit=7`);
             if (handle401(response)) return;
             const data = await response.json();
             thumbnailStrip.innerHTML = '';
             data.forEach(item => {
                 const img = document.createElement('img');
                 img.className = 'thumbnail';
-                img.src = `/api/browse_image/${item.image_id}`;
+                img.src = `${BASE}/api/browse_image/${item.image_id}`;
                 img.alt = item.plate_text || 'Detección';
                 img.width = 120;
                 img.height = 80;
@@ -496,7 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchAndInitDropdowns() {
         try {
-            const response = await fetch('/api/filter_options');
+            const response = await fetch(`${BASE}/api/filter_options`);
             if (handle401(response)) return;
             if (!response.ok) {
                 console.warn('filter_options returned', response.status, '— dropdowns will be empty');
@@ -691,7 +693,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showSpinner();
         imageModal.style.display = 'flex';
         try {
-            const response = await fetch(`/api/image/${eventId}`);
+            const response = await fetch(`${BASE}/api/image/${eventId}`);
             if (handle401(response)) return;
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
@@ -782,7 +784,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentPatentFilter) params.set('search_term', currentPatentFilter);
 
         try {
-            const resp = await fetch('/api/browse_images?' + params, { signal: browseAbort.signal });
+            const resp = await fetch(`${BASE}/api/browse_images?` + params, { signal: browseAbort.signal });
             if (handle401(resp)) return 0;
             const data = await resp.json();
             if (direction === 'forward') browseItems.push(...data.images);
@@ -817,7 +819,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show spinner (hides image + clears text), then set src
         modalSpinner.hidden = false;
         modalImage.style.display = 'none';
-        modalImage.src = '/api/browse_image/' + item.image_id;
+        modalImage.src = BASE + '/api/browse_image/' + item.image_id;
 
         // Set counter/caption AFTER spinner setup (don't call showSpinner which clears them)
         carouselCounter.textContent = `${browseIndex + 1} / ${browseTotalCount}`;
@@ -835,7 +837,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const i = browseIndex + offset;
             if (offset !== 0 && i >= 0 && i < browseItems.length) {
                 const pre = new Image();
-                pre.src = '/api/browse_image/' + browseItems[i].image_id;
+                pre.src = BASE + '/api/browse_image/' + browseItems[i].image_id;
             }
         }
 
@@ -862,7 +864,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentPatentFilter) params.set('search_term', currentPatentFilter);
 
         try {
-            const resp = await fetch('/api/browse_images?' + params);
+            const resp = await fetch(`${BASE}/api/browse_images?` + params);
             if (handle401(resp)) return;
             const data = await resp.json();
             browseItems.push(...data.images);
