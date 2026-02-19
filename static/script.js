@@ -516,6 +516,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (validBrand.length) dropdownBrand.setSelected(validBrand);
             if (validColor.length) dropdownColor.setSelected(validColor);
             if (validType.length)  dropdownType.setSelected(validType);
+            // Re-sync state vars in case stale URL values were dropped during validation
+            currentBrandFilter = dropdownBrand.getSelected();
+            currentColorFilter = dropdownColor.getSelected();
+            currentTypeFilter  = dropdownType.getSelected();
         } catch (e) {
             console.error('Error loading filter options:', e);
         }
