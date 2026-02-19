@@ -524,6 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentBrandFilter = dropdownBrand.getSelected();
             currentColorFilter = dropdownColor.getSelected();
             currentTypeFilter  = dropdownType.getSelected();
+            updateViewAllBtn();
         } catch (e) {
             console.error('Error loading filter options:', e);
         }
