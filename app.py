@@ -27,7 +27,7 @@ if _auth_missing:
 del _auth_missing
 
 app = Flask(__name__)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)  # trust 1 X-Forwarded-For hop (Render.com)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)  # trust nginx as single trusted proxy
 
 app.secret_key = os.environ["SECRET_KEY"]
 app.config["SESSION_COOKIE_HTTPONLY"] = True
