@@ -115,9 +115,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             // Close when clicking outside
-            document.addEventListener('click', (e) => {
+            this._outsideClickHandler = (e) => {
                 if (!this._root.contains(e.target)) this._close();
-            });
+            };
+            document.addEventListener('click', this._outsideClickHandler);
         }
 
         _open() {
@@ -497,15 +498,24 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/api/filter_options');
             if (handle401(response)) return;
-            if (!response.ok) return;
+            if (!response.ok) {
+                console.warn('filter_options returned', response.status, '— dropdowns will be empty');
+                return;
+            }
             const options = await response.json();
             dropdownBrand.populate(options.brands || []);
             dropdownColor.populate(options.colors || []);
             dropdownType.populate(options.types  || []);
-            // Restore selection from URL
-            if (currentBrandFilter.length) dropdownBrand.setSelected(currentBrandFilter);
-            if (currentColorFilter.length) dropdownColor.setSelected(currentColorFilter);
-            if (currentTypeFilter.length)  dropdownType.setSelected(currentTypeFilter);
+            // Restore selection from URL — intersect with available options to drop stale values
+            const brandSet  = new Set(options.brands || []);
+            const colorSet  = new Set(options.colors || []);
+            const typeSet   = new Set(options.types  || []);
+            const validBrand = currentBrandFilter.filter(v => brandSet.has(v));
+            const validColor = currentColorFilter.filter(v => colorSet.has(v));
+            const validType  = currentTypeFilter.filter(v => typeSet.has(v));
+            if (validBrand.length) dropdownBrand.setSelected(validBrand);
+            if (validColor.length) dropdownColor.setSelected(validColor);
+            if (validType.length)  dropdownType.setSelected(validType);
         } catch (e) {
             console.error('Error loading filter options:', e);
         }
