@@ -642,7 +642,7 @@ def fetch_filter_options():
 
 def count_browsable_images(types, start_date=None, end_date=None, search_term=None,
                            brand_filter=None, color_filter=None, vehicle_type_filter=None):
-    """Count browsable images filtered by type, date range, and plate search."""
+    """Count browsable images filtered by type, date range, plate search, brand, color, and vehicle type."""
     conn = None
     try:
         conn = _get_conn()
