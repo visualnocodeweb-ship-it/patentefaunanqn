@@ -640,7 +640,8 @@ def fetch_filter_options():
         if conn:
             _put_conn(conn)
 
-def count_browsable_images(types, start_date=None, end_date=None, search_term=None):
+def count_browsable_images(types, start_date=None, end_date=None, search_term=None,
+                           brand_filter=None, color_filter=None, vehicle_type_filter=None):
     """Count browsable images filtered by type, date range, and plate search."""
     conn = None
     try:
@@ -664,6 +665,22 @@ def count_browsable_images(types, start_date=None, end_date=None, search_term=No
         if search_term:
             conditions.append("de.camera_plate_text ILIKE %s")
             params.append(f'%{search_term}%')
+        if brand_filter:
+            expanded_brands = []
+            for b in brand_filter:
+                expanded_brands.append(b)
+                expanded_brands.extend(_BRAND_RAW_VARIANTS.get(b, []))
+            placeholders = ','.join(['%s'] * len(expanded_brands))
+            conditions.append(f"de.vehicle_brand IN ({placeholders})")
+            params.extend(expanded_brands)
+        if color_filter:
+            placeholders = ','.join(['%s'] * len(color_filter))
+            conditions.append(f"de.vehicle_color IN ({placeholders})")
+            params.extend(color_filter)
+        if vehicle_type_filter:
+            placeholders = ','.join(['%s'] * len(vehicle_type_filter))
+            conditions.append(f"de.vehicle_type IN ({placeholders})")
+            params.extend(vehicle_type_filter)
 
         where = " WHERE " + " AND ".join(conditions)
         query = ("SELECT COUNT(*) FROM event_images ei "
