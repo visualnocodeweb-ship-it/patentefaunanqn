@@ -703,8 +703,9 @@ def count_browsable_images(types, start_date=None, end_date=None, search_term=No
 
 
 def fetch_browsable_images(cursor_ts=None, cursor_id=None, limit=5, direction='forward',
-                           types=None, start_date=None, end_date=None, search_term=None):
-    """Keyset-paginated image metadata (no image_data). Returns list of dicts."""
+                           types=None, start_date=None, end_date=None, search_term=None,
+                           brand_filter=None, color_filter=None, vehicle_type_filter=None):
+    """Keyset-paginated image metadata (no image_data). Returns list of dicts. Supports filtering by type, date range, plate search, brand, color, and vehicle type."""
     conn = None
     try:
         conn = _get_conn()
@@ -735,6 +736,22 @@ def fetch_browsable_images(cursor_ts=None, cursor_id=None, limit=5, direction='f
         if search_term:
             conditions.append("de.camera_plate_text ILIKE %s")
             params.append(f'%{search_term}%')
+        if brand_filter:
+            expanded_brands = []
+            for b in brand_filter:
+                expanded_brands.append(b)
+                expanded_brands.extend(_BRAND_RAW_VARIANTS.get(b, []))
+            placeholders = ','.join(['%s'] * len(expanded_brands))
+            conditions.append(f"de.vehicle_brand IN ({placeholders})")
+            params.extend(expanded_brands)
+        if color_filter:
+            placeholders = ','.join(['%s'] * len(color_filter))
+            conditions.append(f"de.vehicle_color IN ({placeholders})")
+            params.extend(color_filter)
+        if vehicle_type_filter:
+            placeholders = ','.join(['%s'] * len(vehicle_type_filter))
+            conditions.append(f"de.vehicle_type IN ({placeholders})")
+            params.extend(vehicle_type_filter)
 
         where = ""
         if conditions:
