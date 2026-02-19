@@ -12,7 +12,7 @@
     <meta property="og:image" content="{{ url_for('static', filename='og-image.png', _external=True) }}">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
     <title>Gestión de Imágenes LPR — Patentes Fauna NQN</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2">
 </head>
 <body>
     <a href="#main-content" class="skip-link">Saltar al contenido principal</a>
@@ -96,6 +96,6 @@
     </div>
 
     <script>window.APP_BASE = {{ request.script_root | tojson }};</script>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v=2"></script>
 </body>
 </html>
