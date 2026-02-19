@@ -48,7 +48,7 @@ def require_login():
     # API callers get JSON 401; browsers get a redirect
     if request.path.startswith('/api/'):
         return jsonify({"error": "Unauthorized"}), 401
-    return redirect(url_for('login', next=request.path))
+    return redirect(url_for('login', next=request.script_root + request.path))
 
 _default_limit = os.environ.get("RATE_LIMIT_DEFAULT", "120 per minute")
 limiter = Limiter(
