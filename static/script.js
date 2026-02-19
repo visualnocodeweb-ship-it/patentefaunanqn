@@ -26,8 +26,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Filter inputs
     const filterPatent = document.getElementById('filter-patent');
-    const filterBrand = document.getElementById('filter-brand');
-    const filterType = document.getElementById('filter-type');
     const filterStartDate = document.getElementById('filter-start-date');
     const filterEndDate = document.getElementById('filter-end-date');
     const clearFiltersButton = document.getElementById('clear-all-filters-button');
@@ -49,8 +47,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Filter state
     let currentPage = 1;
     let currentPatentFilter = '';
-    let currentBrandFilter = '';
-    let currentTypeFilter = '';
+    let currentBrandFilter = [];
+    let currentColorFilter = [];
+    let currentTypeFilter  = [];
     let currentStartDateFilter = '';
     let currentEndDateFilter = '';
     let currentMinConfidenceFilter = '';
@@ -68,16 +67,152 @@ document.addEventListener('DOMContentLoaded', () => {
         return false;
     }
 
+    // --- Multi-select dropdown component ---
+    class MultiSelectDropdown {
+        /**
+         * @param {string} containerId  - ID of the <div> to mount into
+         * @param {string} label        - Base label shown on trigger button
+         * @param {function} onChange   - Called with no args whenever selection changes
+         */
+        constructor(containerId, label, onChange) {
+            this._label = label;
+            this._onChange = onChange;
+            this._options = [];
+            this._selected = new Set();
+
+            // Build DOM
+            this._root = document.createElement('div');
+            this._root.className = 'ms-dropdown';
+
+            this._trigger = document.createElement('button');
+            this._trigger.type = 'button';
+            this._trigger.className = 'ms-trigger';
+            this._trigger.textContent = label;
+            this._trigger.setAttribute('aria-haspopup', 'listbox');
+            this._trigger.setAttribute('aria-expanded', 'false');
+
+            this._panel = document.createElement('div');
+            this._panel.className = 'ms-panel';
+            this._panel.setAttribute('hidden', '');
+            this._panel.setAttribute('role', 'listbox');
+            this._panel.setAttribute('aria-multiselectable', 'true');
+
+            this._root.appendChild(this._trigger);
+            this._root.appendChild(this._panel);
+
+            const container = document.getElementById(containerId);
+            if (container) container.appendChild(this._root);
+
+            // Toggle panel on trigger click
+            this._trigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isOpen = !this._panel.hasAttribute('hidden');
+                if (isOpen) {
+                    this._close();
+                } else {
+                    this._open();
+                }
+            });
+
+            // Close when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!this._root.contains(e.target)) this._close();
+            });
+        }
+
+        _open() {
+            this._panel.removeAttribute('hidden');
+            this._trigger.setAttribute('aria-expanded', 'true');
+        }
+
+        _close() {
+            this._panel.setAttribute('hidden', '');
+            this._trigger.setAttribute('aria-expanded', 'false');
+        }
+
+        _updateTrigger() {
+            const count = this._selected.size;
+            this._trigger.textContent = count > 0 ? `${this._label} (${count})` : this._label;
+            this._trigger.classList.toggle('has-selection', count > 0);
+        }
+
+        /** Populate the panel with options. Preserves existing selection. */
+        populate(options) {
+            this._options = options;
+            this._panel.innerHTML = '';
+            options.forEach(opt => {
+                const label = document.createElement('label');
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = opt;
+                cb.checked = this._selected.has(opt);
+                cb.setAttribute('role', 'option');
+                cb.setAttribute('aria-selected', cb.checked ? 'true' : 'false');
+                cb.addEventListener('change', () => {
+                    if (cb.checked) {
+                        this._selected.add(opt);
+                        cb.setAttribute('aria-selected', 'true');
+                    } else {
+                        this._selected.delete(opt);
+                        cb.setAttribute('aria-selected', 'false');
+                    }
+                    this._updateTrigger();
+                    this._onChange();
+                });
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(' ' + opt));
+                this._panel.appendChild(label);
+            });
+            this._updateTrigger();
+        }
+
+        /** Returns array of selected values. */
+        getSelected() {
+            return [...this._selected];
+        }
+
+        /** Sets selection from an array of values (for URL restore). */
+        setSelected(values) {
+            this._selected = new Set(values);
+            // Update checkboxes if panel is already populated
+            this._panel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = this._selected.has(cb.value);
+                cb.setAttribute('aria-selected', cb.checked ? 'true' : 'false');
+            });
+            this._updateTrigger();
+        }
+
+        /** Clear all selections. */
+        reset() {
+            this._selected.clear();
+            this._panel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = false;
+                cb.setAttribute('aria-selected', 'false');
+            });
+            this._updateTrigger();
+        }
+    }
+
+    // Instantiate multi-select dropdowns
+    const dropdownBrand = new MultiSelectDropdown('filter-brand-container', 'Marca', () => debouncedFetch());
+    const dropdownColor = new MultiSelectDropdown('filter-color-container', 'Color', () => debouncedFetch());
+    const dropdownType  = new MultiSelectDropdown('filter-type-container',  'Tipo',  () => debouncedFetch());
+
     // --- URL state management ---
     function getFiltersFromURL() {
         const params = new URLSearchParams(window.location.search);
+        const splitParam = (key) => {
+            const v = params.get(key);
+            return v ? v.split(',').map(s => s.trim()).filter(Boolean) : [];
+        };
         return {
-            page: parseInt(params.get('page')) || 1,
-            patent: params.get('search_term') || '',
-            brand: params.get('brand_filter') || '',
-            type: params.get('type_filter') || '',
-            startDate: params.get('start_date_filter') || '',
-            endDate: params.get('end_date_filter') || '',
+            page:        parseInt(params.get('page')) || 1,
+            patent:      params.get('search_term') || '',
+            brand:       splitParam('brand_filter'),
+            color:       splitParam('color_filter'),
+            type:        splitParam('type_filter'),
+            startDate:   params.get('start_date_filter') || '',
+            endDate:     params.get('end_date_filter') || '',
             minConfidence: params.get('min_confidence_filter') || ''
         };
     }
@@ -86,8 +221,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const params = new URLSearchParams();
         if (currentPage > 1) params.set('page', currentPage);
         if (currentPatentFilter) params.set('search_term', currentPatentFilter);
-        if (currentBrandFilter) params.set('brand_filter', currentBrandFilter);
-        if (currentTypeFilter) params.set('type_filter', currentTypeFilter);
+        if (currentBrandFilter.length) params.set('brand_filter', currentBrandFilter.join(','));
+        if (currentColorFilter.length) params.set('color_filter', currentColorFilter.join(','));
+        if (currentTypeFilter.length)  params.set('type_filter',  currentTypeFilter.join(','));
         if (currentStartDateFilter) params.set('start_date_filter', currentStartDateFilter);
         if (currentEndDateFilter) params.set('end_date_filter', currentEndDateFilter);
         if (currentMinConfidenceFilter) params.set('min_confidence_filter', currentMinConfidenceFilter);
@@ -101,26 +237,26 @@ document.addEventListener('DOMContentLoaded', () => {
     currentPage = urlState.page;
     currentPatentFilter = urlState.patent;
     currentBrandFilter = urlState.brand;
-    currentTypeFilter = urlState.type;
+    currentColorFilter = urlState.color;
+    currentTypeFilter  = urlState.type;
     currentStartDateFilter = urlState.startDate;
-    currentEndDateFilter = urlState.endDate;
+    currentEndDateFilter   = urlState.endDate;
     currentMinConfidenceFilter = urlState.minConfidence;
 
     // Populate inputs from URL state
-    filterPatent.value = currentPatentFilter;
-    filterBrand.value = currentBrandFilter;
-    filterType.value = currentTypeFilter;
+    filterPatent.value    = currentPatentFilter;
     filterStartDate.value = currentStartDateFilter;
-    filterEndDate.value = currentEndDateFilter;
-    // currentMinConfidenceFilter kept for API compat but no UI input
+    filterEndDate.value   = currentEndDateFilter;
+    // Dropdowns: setSelected() is called after populate() in fetchAndInitDropdowns below
 
     // --- Read all filter inputs into state ---
     function readAllFilters() {
         currentPatentFilter = filterPatent.value.trim();
-        currentBrandFilter = filterBrand.value.trim();
-        currentTypeFilter = filterType.value.trim();
+        currentBrandFilter  = dropdownBrand.getSelected();
+        currentColorFilter  = dropdownColor.getSelected();
+        currentTypeFilter   = dropdownType.getSelected();
         currentStartDateFilter = filterStartDate.value;
-        currentEndDateFilter = filterEndDate.value;
+        currentEndDateFilter   = filterEndDate.value;
         currentMinConfidenceFilter = '';
         currentPage = 1;
     }
@@ -239,8 +375,9 @@ document.addEventListener('DOMContentLoaded', () => {
         patentTableBody.innerHTML = '<tr><td colspan="8">Cargando patentes\u2026</td></tr>';
         let url = `/api/all_patents?page=${currentPage}&page_size=${pageSize}`;
         if (currentPatentFilter) url += `&search_term=${encodeURIComponent(currentPatentFilter)}`;
-        if (currentBrandFilter) url += `&brand_filter=${encodeURIComponent(currentBrandFilter)}`;
-        if (currentTypeFilter) url += `&type_filter=${encodeURIComponent(currentTypeFilter)}`;
+        if (currentBrandFilter.length) url += `&brand_filter=${encodeURIComponent(currentBrandFilter.join(','))}`;
+        if (currentColorFilter.length) url += `&color_filter=${encodeURIComponent(currentColorFilter.join(','))}`;
+        if (currentTypeFilter.length)  url += `&type_filter=${encodeURIComponent(currentTypeFilter.join(','))}`;
         if (currentStartDateFilter) url += `&start_date_filter=${encodeURIComponent(currentStartDateFilter)}`;
         if (currentEndDateFilter) url += `&end_date_filter=${encodeURIComponent(currentEndDateFilter)}`;
         if (currentMinConfidenceFilter) {
@@ -356,16 +493,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function fetchAndInitDropdowns() {
+        try {
+            const response = await fetch('/api/filter_options');
+            if (handle401(response)) return;
+            if (!response.ok) return;
+            const options = await response.json();
+            dropdownBrand.populate(options.brands || []);
+            dropdownColor.populate(options.colors || []);
+            dropdownType.populate(options.types  || []);
+            // Restore selection from URL
+            if (currentBrandFilter.length) dropdownBrand.setSelected(currentBrandFilter);
+            if (currentColorFilter.length) dropdownColor.setSelected(currentColorFilter);
+            if (currentTypeFilter.length)  dropdownType.setSelected(currentTypeFilter);
+        } catch (e) {
+            console.error('Error loading filter options:', e);
+        }
+    }
+
     // --- Filter event listeners ---
     // Text/number inputs: debounced on input, immediate on Enter
-    [filterPatent, filterBrand, filterType].forEach(input => {
-        input.addEventListener('input', debouncedFetch);
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                triggerFilteredFetch();
-            }
-        });
+    filterPatent.addEventListener('input', debouncedFetch);
+    filterPatent.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            triggerFilteredFetch();
+        }
     });
 
     // Date inputs: immediate on change
@@ -376,8 +529,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clear all filters
     clearFiltersButton.addEventListener('click', () => {
         filterPatent.value = '';
-        filterBrand.value = '';
-        filterType.value = '';
+        dropdownBrand.reset();
+        dropdownColor.reset();
+        dropdownType.reset();
         filterStartDate.value = '';
         filterEndDate.value = '';
         document.querySelectorAll('.time-preset-btn').forEach(b => b.classList.remove('active'));
@@ -426,8 +580,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             // Read other filters too, then fetch
             currentPatentFilter = filterPatent.value.trim();
-            currentBrandFilter = filterBrand.value.trim();
-            currentTypeFilter = filterType.value.trim();
+            currentBrandFilter  = dropdownBrand.getSelected();
+            currentColorFilter  = dropdownColor.getSelected();
+            currentTypeFilter   = dropdownType.getSelected();
             currentMinConfidenceFilter = '';
             if (preset === 'clear') {
                 currentStartDateFilter = '';
@@ -760,4 +915,5 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchPatentsTableData();
     fetchStats();
     Promise.resolve().then(fetchLatestThumbnails);
+    Promise.resolve().then(fetchAndInitDropdowns);
 });
