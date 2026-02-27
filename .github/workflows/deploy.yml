@@ -9,12 +9,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  test:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create test virtualenv
+        run: python3 -m venv /tmp/pfn-deploy-venv
+
       - name: Install dependencies
+        run: /tmp/pfn-deploy-venv/bin/pip install -q -r requirements.txt -r requirements-dev.txt
+
+      - name: Check syntax
+        run: /tmp/pfn-deploy-venv/bin/python -m compileall -q .
+
+      - name: Run tests
+        run: /tmp/pfn-deploy-venv/bin/pytest tests/ -v
+
+      - name: Cleanup test venv
+        if: always()
+        run: rm -rf /tmp/pfn-deploy-venv
+
+  deploy:
+    runs-on: self-hosted
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install production dependencies
         run: /opt/patentefaunanqn/venv/bin/pip install -q -r requirements.txt
 
       - name: Sync application files
@@ -32,7 +54,7 @@ jobs:
       - name: Health check
         run: |
           sleep 4
-          curl -sf http://127.0.0.1:5100 > /dev/null && echo 'OK' || {
+          curl -sf http://127.0.0.1:5100/health | grep '"status":"ok"' || {
             journalctl -u patentefaunanqn -n 30 --no-pager
             exit 1
           }

@@ -9,12 +9,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
+  test:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create test virtualenv
+        run: python3 -m venv /tmp/pfn-ci-venv
+
+      - name: Install dependencies
+        run: /tmp/pfn-ci-venv/bin/pip install -q -r requirements.txt -r requirements-dev.txt
+
       - name: Check syntax
-        run: |
-          /opt/patentefaunanqn/venv/bin/pip install -q -r requirements.txt
-          /opt/patentefaunanqn/venv/bin/python -m compileall -q .
+        run: /tmp/pfn-ci-venv/bin/python -m compileall -q .
+
+      - name: Run tests
+        run: /tmp/pfn-ci-venv/bin/pytest tests/ -v
+
+      - name: Cleanup test venv
+        if: always()
+        run: rm -rf /tmp/pfn-ci-venv
