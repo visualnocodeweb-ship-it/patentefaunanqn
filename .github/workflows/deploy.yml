@@ -19,7 +19,7 @@ jobs:
 
       - name: Sync application files
         run: |
-          rsync -rlpt --delete --no-owner --no-group \
+          rsync -rl --delete --no-perms --no-owner --no-group --omit-dir-times \
             --exclude='.git/' \
             --exclude='venv/' \
             --exclude='.env' \
