@@ -1,0 +1,38 @@
+name: Deploy
+
+on:
+  push:
+    branches: [release]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: /opt/patentefaunanqn/venv/bin/pip install -q -r requirements.txt
+
+      - name: Sync application files
+        run: |
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='venv/' \
+            --exclude='.env' \
+            --exclude='__pycache__/' \
+            $GITHUB_WORKSPACE/ /opt/patentefaunanqn/
+
+      - name: Restart service
+        run: sudo systemctl restart patentefaunanqn
+
+      - name: Health check
+        run: |
+          sleep 4
+          curl -sf http://127.0.0.1:5100 > /dev/null && echo 'OK' || {
+            journalctl -u patentefaunanqn -n 30 --no-pager
+            exit 1
+          }

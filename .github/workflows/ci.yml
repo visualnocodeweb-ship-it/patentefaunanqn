@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [release]
+
+concurrency:
+  group: ci-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check syntax
+        run: |
+          /opt/patentefaunanqn/venv/bin/pip install -q -r requirements.txt
+          /opt/patentefaunanqn/venv/bin/python -m compileall -q .
