@@ -341,12 +341,11 @@ def search_by_plate_text(plate_text, limit=50):
             _put_conn(conn)
 
 def _validate_date(value):
-    """Validate and return an ISO date/datetime string, or None if invalid."""
+    """Validate and return a parsed datetime object, or None if invalid."""
     if not value:
         return None
     try:
-        datetime.datetime.fromisoformat(value)
-        return value
+        return datetime.datetime.fromisoformat(value)
     except (ValueError, TypeError):
         return None
 
