@@ -17,8 +17,8 @@
 <body>
     <a href="#main-content" class="skip-link">Saltar al contenido principal</a>
     <main class="container" id="main-content">
-        <div style="text-align:right; margin-bottom: 4px;">
-            <a href="{{ url_for('logout') }}" style="font-size:12px; color:#555; text-decoration:none;">Cerrar sesión</a>
+        <div class="logout-bar">
+            <a href="{{ url_for('logout') }}" class="logout-link">Cerrar sesión</a>
         </div>
         <h1>Gestión de Imágenes LPR</h1>
 
@@ -34,7 +34,7 @@
                     <span class="filter-label">Locación:</span>
                     <div id="filter-location-container"></div>
                     <span class="filter-separator">|</span>
-                    <input type="text" id="filter-patent" autocomplete="off" placeholder="Patente…" title="Filtrar por patente">
+                    <input type="text" id="filter-patent" autocomplete="off" placeholder="Patente…" aria-label="Filtrar por patente">
                     <div id="filter-brand-container"></div>
                     <div id="filter-color-container"></div>
                     <div id="filter-type-container"></div>
@@ -43,10 +43,10 @@
                     <button id="invert-selection-button">Invertir Selección</button>
                 </div>
                 <div class="filter-row">
-                    <span class="filter-label">Desde</span>
-                    <input type="datetime-local" id="filter-start-date" autocomplete="off" title="Fecha y hora desde">
-                    <span class="filter-label">Hasta</span>
-                    <input type="datetime-local" id="filter-end-date" autocomplete="off" title="Fecha y hora hasta">
+                    <label for="filter-start-date" class="filter-label">Desde</label>
+                    <input type="datetime-local" id="filter-start-date" autocomplete="off">
+                    <label for="filter-end-date" class="filter-label">Hasta</label>
+                    <input type="datetime-local" id="filter-end-date" autocomplete="off">
                     <button class="time-preset-btn" data-preset="1h">Última hora</button>
                     <button class="time-preset-btn" data-preset="24h">Últimas 24h</button>
                     <button class="time-preset-btn" data-preset="7d">Últimos 7 días</button>
@@ -59,7 +59,7 @@
             <table id="patent-table">
                 <thead>
                     <tr>
-                        <th><input type="checkbox" id="select-all-checkbox"></th>
+                        <th><input type="checkbox" id="select-all-checkbox" aria-label="Seleccionar todo"></th>
                         <th title="Avistamientos">#</th>
                         <th>Patente</th>
                         <th>Marca</th>

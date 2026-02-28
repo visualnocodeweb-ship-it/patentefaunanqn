@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearFiltersButton = document.getElementById('clear-all-filters-button');
 
     // Modal refs
+    let _modalOpen = false;
     const imageModal = document.getElementById('imageModal');
     const modalImage = document.getElementById('modalImage');
     const modalError = document.getElementById('modal-error');
@@ -99,14 +100,14 @@ document.addEventListener('DOMContentLoaded', () => {
             this._trigger.type = 'button';
             this._trigger.className = 'ms-trigger';
             this._trigger.textContent = label;
-            this._trigger.setAttribute('aria-haspopup', 'listbox');
+            this._trigger.setAttribute('aria-haspopup', 'true');
             this._trigger.setAttribute('aria-expanded', 'false');
 
             this._panel = document.createElement('div');
             this._panel.className = 'ms-panel';
             this._panel.setAttribute('hidden', '');
-            this._panel.setAttribute('role', 'listbox');
-            this._panel.setAttribute('aria-multiselectable', 'true');
+            this._panel.setAttribute('role', 'group');
+            this._panel.setAttribute('aria-label', label);
 
             this._root.appendChild(this._trigger);
             this._root.appendChild(this._panel);
@@ -167,15 +168,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 cb.type = 'checkbox';
                 cb.value = opt;
                 cb.checked = this._selected.has(opt);
-                cb.setAttribute('role', 'option');
-                cb.setAttribute('aria-selected', cb.checked ? 'true' : 'false');
                 cb.addEventListener('change', () => {
                     if (cb.checked) {
                         this._selected.add(opt);
-                        cb.setAttribute('aria-selected', 'true');
                     } else {
                         this._selected.delete(opt);
-                        cb.setAttribute('aria-selected', 'false');
                     }
                     this._updateTrigger();
                     this._onChange();
@@ -198,7 +195,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update checkboxes if panel is already populated
             this._panel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                 cb.checked = this._selected.has(cb.value);
-                cb.setAttribute('aria-selected', cb.checked ? 'true' : 'false');
             });
             this._updateTrigger();
         }
@@ -211,7 +207,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             this._panel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                 cb.checked = this._selected.has(cb.value);
-                cb.setAttribute('aria-selected', cb.checked ? 'true' : 'false');
             });
             this._updateTrigger();
         }
@@ -221,7 +216,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this._selected.clear();
             this._panel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                 cb.checked = false;
-                cb.setAttribute('aria-selected', 'false');
             });
             this._updateTrigger();
         }
@@ -325,6 +319,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Table row ---
     function createTableRow(item) {
         const row = document.createElement('tr');
+        const plateLabel = escapeHtml(item.plate_text || 'desconocida');
         const editedBadge = item.is_manually_edited
             ? '<span class="edited-badge" title="Editado manualmente">✎</span>'
             : '';
@@ -347,10 +342,9 @@ document.addEventListener('DOMContentLoaded', () => {
             <td>${new Date(item.created_at).toLocaleString()}</td>
             <td>
                 ${item.thumbnail_id
-                    ? `<img src="${BASE}/api/browse_image/${escapeHtml(String(item.thumbnail_id))}"
-                           class="row-thumbnail" loading="lazy" alt="Vehículo"
-                           data-event-id="${escapeHtml(item.event_id)}">`
-                    : `<span class="no-image-label" data-event-id="${escapeHtml(item.event_id)}">Sin imagen</span>`}
+                    ? `<button class="row-thumbnail-btn" data-event-id="${escapeHtml(item.event_id)}" aria-label="Ver imagen de patente ${plateLabel}"><img src="${BASE}/api/browse_image/${escapeHtml(String(item.thumbnail_id))}"
+                           class="row-thumbnail" loading="lazy" alt=""></button>`
+                    : `<button class="no-image-label" data-event-id="${escapeHtml(item.event_id)}" aria-label="Ver imágenes del evento para patente ${plateLabel}">Sin imagen</button>`}
             </td>
         `;
         return row;
@@ -417,7 +411,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Prev button
         const prevBtn = document.createElement('button');
-        prevBtn.innerHTML = '&laquo;';
+        prevBtn.innerHTML = '<span aria-hidden="true">&laquo;</span>';
+        prevBtn.setAttribute('aria-label', 'Página anterior');
         prevBtn.dataset.page = currentPage - 1;
         prevBtn.disabled = currentPage === 1;
         prevBtn.title = 'Anterior';
@@ -440,7 +435,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Next button
         const nextBtn = document.createElement('button');
-        nextBtn.innerHTML = '&raquo;';
+        nextBtn.innerHTML = '<span aria-hidden="true">&raquo;</span>';
+        nextBtn.setAttribute('aria-label', 'Página siguiente');
         nextBtn.dataset.page = currentPage + 1;
         nextBtn.disabled = currentPage === totalPages;
         nextBtn.title = 'Siguiente';
@@ -577,15 +573,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             thumbnailStrip.innerHTML = '';
             data.forEach(item => {
+                const plateText = item.plate_text || 'Detección';
+                const btn = document.createElement('button');
+                btn.className = 'thumbnail-btn';
+                btn.setAttribute('aria-label', `Ver imagen de patente ${plateText}`);
                 const img = document.createElement('img');
                 img.className = 'thumbnail';
                 img.src = `${BASE}/api/browse_image/${item.image_id}`;
-                img.alt = item.plate_text || 'Detección';
+                img.alt = '';
                 img.width = 120;
                 img.height = 80;
-                img.dataset.eventId = item.event_id;
-                img.addEventListener('click', () => openModalForEvent(item.event_id));
-                thumbnailStrip.appendChild(img);
+                btn.appendChild(img);
+                btn.addEventListener('click', () => openModalForEvent(item.event_id));
+                thumbnailStrip.appendChild(btn);
             });
             // "Ver Todas" button
             viewAllBtn = document.createElement('button');
@@ -817,6 +817,7 @@ document.addEventListener('DOMContentLoaded', () => {
         carouselIndex = ((index % carouselImages.length) + carouselImages.length) % carouselImages.length;
         const img = carouselImages[carouselIndex];
         modalImage.src = `data:image/jpeg;base64,${img.image_data}`;
+        modalImage.alt = `Imagen ${img.image_type || ''} — Patente ${img.plate_text || 'desconocida'}`;
         carouselCounter.textContent = `${carouselIndex + 1} / ${carouselImages.length}`;
         carouselCaption.textContent = img.image_type || '';
         const showNav = carouselImages.length > 1;
@@ -852,6 +853,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hideModalError();
         showSpinner();
         imageModal.style.display = 'flex';
+        _modalOpen = true;
         try {
             const response = await fetch(`${BASE}/api/image/${eventId}`);
             if (handle401(response)) return;
@@ -879,8 +881,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = event.target;
 
         // Thumbnail click
-        if (target.classList.contains('row-thumbnail') || target.classList.contains('no-image-label')) {
-            const eventId = target.dataset.eventId;
+        const thumbBtn = target.closest('.row-thumbnail-btn, .no-image-label');
+        if (thumbBtn) {
+            const eventId = thumbBtn.dataset.eventId;
             if (eventId) openModalForEvent(eventId);
             return;
         }
@@ -1057,12 +1060,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     selectAllCheckbox.addEventListener('change', () => {
         const checkboxes = patentTableBody.querySelectorAll('.row-checkbox');
-        checkboxes.forEach(cb => { cb.checked = selectAllCheckbox.checked; });
+        checkboxes.forEach(cb => {
+            cb.checked = selectAllCheckbox.checked;
+            const row = cb.closest('tr');
+            if (row) row.classList.toggle('row-selected', cb.checked);
+        });
         updateSelectionAction();
     });
 
     patentTableBody.addEventListener('change', (event) => {
         if (event.target.classList.contains('row-checkbox')) {
+            const cb = event.target;
+            const row = cb.closest('tr');
+            if (row) row.classList.toggle('row-selected', cb.checked);
             const all = patentTableBody.querySelectorAll('.row-checkbox');
             const checked = patentTableBody.querySelectorAll('.row-checkbox:checked');
             selectAllCheckbox.checked = all.length > 0 && checked.length === all.length;
@@ -1159,7 +1169,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const today = new Date().toISOString().slice(0, 10);
             a.href = blobUrl;
             a.download = `patentes_${today}.csv`;
+            document.body.appendChild(a);
             a.click();
+            a.remove();
             URL.revokeObjectURL(blobUrl);
         } catch (e) {
             console.error('Error exporting CSV:', e);
@@ -1172,6 +1184,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function closeModal() {
         imageModal.style.display = 'none';
+        _modalOpen = false;
         modalImage.src = '';
         modalMode = null;
         // Event mode cleanup
@@ -1196,7 +1209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.addEventListener('keydown', (event) => {
-        if (imageModal.style.display === 'flex') {
+        if (_modalOpen) {
             if (event.key === 'Escape') closeModal();
             else if (event.key === 'ArrowLeft') {
                 if (modalMode === 'browse') browseShowSlide(browseIndex - 1);
@@ -1271,6 +1284,8 @@ document.addEventListener('DOMContentLoaded', () => {
         modalSpinner.hidden = false;
         modalImage.style.display = 'none';
         modalImage.src = BASE + '/api/browse_image/' + item.image_id;
+        const browseTypeLabels = { vehicle_detection: 'Detección', vehicle_picture: 'Vehículo', plate: 'Patente' };
+        modalImage.alt = `Imagen ${browseTypeLabels[item.image_type] || item.image_type} — Patente ${item.plate_text || 'desconocida'}`;
 
         // Set counter/caption AFTER spinner setup (don't call showSpinner which clears them)
         carouselCounter.textContent = `${browseIndex + 1} / ${browseTotalCount}`;
@@ -1356,6 +1371,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hideModalError();
         showSpinner();
         imageModal.style.display = 'flex';
+        _modalOpen = true;
 
         const loaded = await browseLoadPage('forward');
         hideSpinner();

@@ -1,9 +1,36 @@
+:root {
+    --color-primary: #007bff;
+    --color-primary-dark: #0056b3;
+    --color-danger: #dc3545;
+    --color-success: #28a745;
+    --color-text: #333;
+    --color-muted: #555;
+    --color-border: #ddd;
+    --color-bg-light: #f4f4f4;
+}
+
 body {
-    font-family: Arial, sans-serif;
+    font-family: system-ui, Arial, sans-serif;
     margin: 0;
     padding: 20px;
-    background-color: #f4f4f4;
-    color: #333;
+    background-color: var(--color-bg-light);
+    color: var(--color-text);
+}
+
+.logout-bar {
+    text-align: right;
+    margin-bottom: 4px;
+}
+
+.logout-link {
+    font-size: 12px;
+    color: var(--color-muted);
+    text-decoration: none;
+}
+
+.logout-link:hover {
+    color: var(--color-primary-dark);
+    text-decoration: underline;
 }
 
 /* Skip link */
@@ -44,7 +71,7 @@ body {
 }
 
 h1 {
-    color: #0056b3;
+    color: var(--color-primary-dark);
     text-align: center;
     text-wrap: balance;
     margin-bottom: 12px;
@@ -91,7 +118,8 @@ h1 {
 }
 
 .stats-bar .stat-value.low-conf {
-    color: #333;
+    color: #e67e00;
+    font-weight: 700;
 }
 
 /* Thumbnail strip */
@@ -116,7 +144,7 @@ h1 {
 }
 
 .thumbnail:hover {
-    border-color: #007bff;
+    border-color: var(--color-primary);
     box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
@@ -176,7 +204,7 @@ h1 {
 
 .filter-row input[type="text"],
 .filter-row input[type="number"],
-.filter-row input[type="date"] {
+.filter-row input[type="datetime-local"] {
     padding: 7px 10px;
     border: 1px solid #ddd;
     border-radius: 4px;
@@ -184,8 +212,8 @@ h1 {
     width: 120px;
 }
 
-.filter-row input[type="date"] {
-    width: 140px;
+.filter-row input[type="datetime-local"] {
+    width: 180px;
 }
 
 
@@ -257,7 +285,6 @@ h1 {
 #patent-table th {
     background-color: #007bff;
     color: white;
-    cursor: pointer;
 }
 
 /* Tabular nums for sightings, confidence, and date columns */
@@ -273,6 +300,14 @@ h1 {
 
 #patent-table tr:hover {
     background-color: #ddd;
+}
+
+#patent-table tbody tr.row-selected {
+    background-color: #dbeafe;
+}
+
+#patent-table tbody tr.row-selected:hover {
+    background-color: #bfdbfe;
 }
 
 /* Ajuste para el colspan de la tabla */
@@ -296,9 +331,19 @@ h1 {
     cursor: pointer;
 }
 .no-image-label {
+    all: unset;
+    display: inline-block;
     font-size: 11px;
     color: #999;
     cursor: pointer;
+}
+.no-image-label:hover {
+    color: var(--color-primary-dark);
+    text-decoration: underline;
+}
+.no-image-label:focus-visible {
+    outline: 2px solid var(--color-primary-dark);
+    outline-offset: 2px;
 }
 
 /* View image buttons in table */
@@ -385,7 +430,7 @@ h1 {
 .modal {
     display: none;
     position: fixed;
-    z-index: 1;
+    z-index: 1000;
     left: 0;
     top: 0;
     width: 100%;
@@ -437,9 +482,14 @@ h1 {
     touch-action: manipulation;
 }
 
-.close-button:hover,
+.close-button:hover {
+    color: #000;
+}
+
 .close-button:focus-visible {
     color: #000;
+    outline: 2px solid var(--color-primary-dark);
+    outline-offset: 2px;
 }
 
 /* Spinner */
@@ -535,9 +585,9 @@ h1 {
 .view-all-btn {
     flex: 0 0 120px;
     height: 80px;
-    background-color: #007bff;
+    background-color: var(--color-primary);
     color: #fff;
-    border: 1px solid #007bff;
+    border: 1px solid var(--color-primary);
     font-size: 13px;
     font-weight: 600;
     display: flex;
@@ -549,14 +599,14 @@ h1 {
 }
 
 .view-all-btn:hover {
-    background-color: #0056b3;
+    background-color: var(--color-primary-dark);
 }
 
 /* Focus-visible styles for all interactive elements */
 button:focus-visible,
 input:focus-visible,
 a:focus-visible {
-    outline: 2px solid #0056b3;
+    outline: 2px solid var(--color-primary-dark);
     outline-offset: 2px;
 }
 
@@ -583,9 +633,9 @@ a:focus-visible {
 }
 
 .ms-trigger.has-selection {
-    background-color: #007bff;
+    background-color: var(--color-primary);
     color: #fff;
-    border-color: #007bff;
+    border-color: var(--color-primary);
 }
 
 .ms-panel {
@@ -632,9 +682,13 @@ a:focus-visible {
         align-items: stretch;
     }
 
+    .filter-separator {
+        display: none;
+    }
+
     .filter-row input[type="text"],
     .filter-row input[type="number"],
-    .filter-row input[type="date"] {
+    .filter-row input[type="datetime-local"] {
         width: 100%;
         box-sizing: border-box;
     }
@@ -683,6 +737,28 @@ a:focus-visible {
     h1 {
         font-size: 1.3rem;
     }
+}
+
+/* Toggle buttons use 6px 12px padding; action buttons use 5px 14px — intentional split */
+
+/* Keyboard-accessible thumbnail wrappers */
+.thumbnail-btn {
+    all: unset;
+    display: contents;
+    cursor: pointer;
+}
+.thumbnail-btn:focus-visible {
+    outline: 2px solid var(--color-primary-dark);
+    outline-offset: 2px;
+}
+.row-thumbnail-btn {
+    all: unset;
+    display: inline-block;
+    cursor: pointer;
+}
+.row-thumbnail-btn:focus-visible {
+    outline: 2px solid var(--color-primary-dark);
+    outline-offset: 2px;
 }
 
 /* Invalid plates toggle button */
