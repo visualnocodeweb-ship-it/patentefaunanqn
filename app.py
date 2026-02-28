@@ -195,6 +195,8 @@ def images_by_datetime():
     start_datetime = request.args.get('start_datetime')
     end_datetime = request.args.get('end_datetime')
     limit = request.args.get('limit', type=int) # Get optional limit parameter
+    if limit is not None:
+        limit = max(1, min(500, limit))
 
     if not start_datetime or not end_datetime:
         return jsonify({"error": "Missing 'start_datetime' or 'end_datetime' query parameter"}), 400

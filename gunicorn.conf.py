@@ -45,7 +45,7 @@ def post_fork(server, worker):
         user=db_utils.DB_USER,
         password=db_utils.DB_PASSWORD,
         connect_timeout=10,
-        options="-c statement_timeout=30000",
+        options="-c statement_timeout=30000 -c idle_in_transaction_session_timeout=60000",
         keepalives=1,
         keepalives_idle=30,
         keepalives_interval=5,

@@ -7,6 +7,8 @@ import datetime
 import time
 logger = logging.getLogger(__name__)
 
+# NOTE: detection_events.id uses UUID v4 (gen_random_uuid()) as primary key.
+
 # Mapeo de locaciones (nombre en UI) → lista de camera_device_no en la DB
 # Actualizar cuando se agreguen nuevas cámaras.
 CAMERA_LOCATION_MAP: dict[str, list[str]] = {
@@ -68,12 +70,15 @@ DB_PASSWORD = os.environ["DB_PASSWORD"]
 # NOTE: `_pool` must remain a bare module-level name.
 # gunicorn.conf.py's post_fork hook rebinds it via `db_utils._pool = ...`
 # after forking each worker. Never cache `_pool` in a local or class variable.
+#
+# Pool sizing: Render max_connections ~97. With 2 gunicorn workers x 10 maxconn
+# = 20 connections total, well within limits.
 _pool = psycopg2.pool.ThreadedConnectionPool(
     minconn=int(os.environ.get("DB_POOL_MIN", "2")),
     maxconn=int(os.environ.get("DB_POOL_MAX", "10")),
     host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASSWORD,
     connect_timeout=10,
-    options="-c statement_timeout=30000",  # 30 000 ms = 30 s
+    options="-c statement_timeout=30000 -c idle_in_transaction_session_timeout=60000",
     keepalives=1,
     keepalives_idle=30,
     keepalives_interval=5,
@@ -174,7 +179,7 @@ def fetch_latest_images(limit=5): # Reducido el límite para depuración
             _put_conn(conn)
 
 
-def fetch_new_images_for_download(last_timestamp=None):
+def fetch_new_images_for_download(last_timestamp=None, last_image_id=None, limit=1000):
     """
     Recupera imágenes creadas después de last_timestamp.
     Retorna una lista de diccionarios con la información de la imagen (image_data en bytes).
@@ -184,6 +189,11 @@ def fetch_new_images_for_download(last_timestamp=None):
         conn = _get_conn()
         cur = conn.cursor()
 
+        # Cursor strategy:
+        # - Primary keyset order: (de.created_at, ei.id) ASC
+        # - If last_image_id is missing (legacy cursor), include rows at the same
+        #   timestamp to avoid permanent skips at batch boundaries.
+        limit = max(1, min(5000, int(limit)))
         query = """
         SELECT
             de.id AS event_id,
@@ -199,11 +209,23 @@ def fetch_new_images_for_download(last_timestamp=None):
         JOIN
             event_images ei ON de.id = ei.event_id
         WHERE
-            (%s IS NULL OR de.created_at > %s)
+            (
+                %s IS NULL
+                OR de.created_at > %s
+                OR (
+                    de.created_at = %s
+                    AND (%s IS NULL OR ei.id > %s)
+                )
+            )
         ORDER BY
-            de.created_at ASC;
+            de.created_at ASC,
+            ei.id ASC
+        LIMIT %s;
         """
-        cur.execute(query, (last_timestamp, last_timestamp))
+        cur.execute(
+            query,
+            (last_timestamp, last_timestamp, last_timestamp, last_image_id, last_image_id, limit)
+        )
         
         columns = [desc[0] for desc in cur.description]
         results = []
@@ -447,6 +469,7 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
     total_count = 0
     try:
         conn = _get_conn()
+        conn.autocommit = False
         cur = conn.cursor()
 
         offset = (page - 1) * page_size
@@ -462,21 +485,27 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
         cur.execute("SELECT COUNT(*) FROM detection_events" + where_clause, query_params)
         total_count = cur.fetchone()[0]
 
-        # Fetch page of patents (no window function)
+        # Fetch page of patents using LEFT JOIN LATERAL for thumbnail
         patents_query = """
         SELECT
-            id AS event_id,
-            camera_plate_text AS plate_text,
-            vehicle_brand,
-            vehicle_color,
-            vehicle_type,
-            camera_confidence AS plate_confidence,
-            created_at,
-            is_manually_edited,
-            camera_device_no
+            de.id AS event_id,
+            de.camera_plate_text AS plate_text,
+            de.vehicle_brand,
+            de.vehicle_color,
+            de.vehicle_type,
+            de.camera_confidence AS plate_confidence,
+            de.created_at,
+            de.is_manually_edited,
+            de.camera_device_no,
+            thumb.id AS thumbnail_id
         FROM
-            detection_events
-        """ + where_clause + " ORDER BY created_at DESC LIMIT %s OFFSET %s;"
+            detection_events de
+        LEFT JOIN LATERAL (
+            SELECT ei.id FROM event_images ei
+            WHERE ei.event_id = de.id AND ei.image_type = 'vehicle_picture'
+            ORDER BY ei.id LIMIT 1
+        ) thumb ON true
+        """ + where_clause + " ORDER BY de.created_at DESC LIMIT %s OFFSET %s;"
 
         page_params = list(query_params) + [page_size, offset]
         cur.execute(patents_query, page_params)
@@ -508,17 +537,38 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
             p['sightings'] = sightings_map.get(p.get('plate_text'), 0)
 
         cur.close()
+        conn.commit()
         return patents, total_count
 
     except (ValueError, TypeError) as e:
         logger.error("Error en el formato de fecha/hora al obtener patentes paginadas: %s", e)
+        try:
+            if conn:
+                conn.rollback()
+        except Exception:
+            pass
         return [], 0
     except psycopg2.Error as e:
+        try:
+            if conn:
+                conn.rollback()
+        except Exception:
+            pass
         logger.error("Error de base de datos al obtener patentes paginadas: %s", e)
         raise DBError("Database operation failed") from e
     except RuntimeError:
+        try:
+            if conn:
+                conn.rollback()
+        except Exception:
+            pass
         raise
     except Exception as e:
+        try:
+            if conn:
+                conn.rollback()
+        except Exception:
+            pass
         logger.error("Un error inesperado ocurrió al obtener patentes paginadas: %s", e)
         raise DBError("Database operation failed") from e
     finally:
@@ -667,23 +717,28 @@ def fetch_filter_options():
         cur = conn.cursor()
 
         cur.execute(
-            "SELECT DISTINCT vehicle_brand FROM detection_events "
-            "WHERE vehicle_brand IS NOT NULL AND vehicle_brand <> ''"
-        )
-        raw_brands = [row[0] for row in cur.fetchall()]
-        brands = sorted({normalize_vehicle_brand(b) for b in raw_brands if b})
-
-        cur.execute(
-            "SELECT DISTINCT vehicle_color FROM detection_events "
-            "WHERE vehicle_color IS NOT NULL AND vehicle_color <> ''"
-        )
-        colors = sorted({row[0].strip() for row in cur.fetchall() if row[0] and row[0].strip()})
-
-        cur.execute(
-            "SELECT DISTINCT vehicle_type FROM detection_events "
+            "SELECT DISTINCT 'brand' AS col, vehicle_brand AS val FROM detection_events "
+            "WHERE vehicle_brand IS NOT NULL AND vehicle_brand <> '' "
+            "UNION ALL "
+            "SELECT DISTINCT 'color', vehicle_color FROM detection_events "
+            "WHERE vehicle_color IS NOT NULL AND vehicle_color <> '' "
+            "UNION ALL "
+            "SELECT DISTINCT 'type', vehicle_type FROM detection_events "
             "WHERE vehicle_type IS NOT NULL AND vehicle_type <> ''"
         )
-        types = sorted({row[0].strip() for row in cur.fetchall() if row[0] and row[0].strip()})
+        raw_brands = []
+        raw_colors = []
+        raw_types = []
+        for col, val in cur.fetchall():
+            if col == 'brand':
+                raw_brands.append(val)
+            elif col == 'color':
+                raw_colors.append(val)
+            else:
+                raw_types.append(val)
+        brands = sorted({normalize_vehicle_brand(b) for b in raw_brands if b})
+        colors = sorted({v.strip() for v in raw_colors if v and v.strip()})
+        types = sorted({v.strip() for v in raw_types if v and v.strip()})
 
         cur.close()
         locations = sorted(CAMERA_LOCATION_MAP.keys())
@@ -912,7 +967,7 @@ def fetch_event_by_id(event_id):
             }
     finally:
         if conn:
-            _pool.putconn(conn)
+            _put_conn(conn)
 
 
 def update_detection_event(event_id, plate_text, vehicle_brand, vehicle_color, vehicle_type):
@@ -935,11 +990,21 @@ def update_detection_event(event_id, plate_text, vehicle_brand, vehicle_color, v
         cur.close()
         return updated
     except psycopg2.Error as e:
+        try:
+            if conn:
+                conn.rollback()
+        except Exception:
+            pass
         logger.error("Error updating detection event %s: %s", event_id, e)
         raise DBError("Database operation failed") from e
     except RuntimeError:
         raise
     except Exception as e:
+        try:
+            if conn:
+                conn.rollback()
+        except Exception:
+            pass
         logger.error("Unexpected error updating detection event %s: %s", event_id, e)
         raise DBError("Database operation failed") from e
     finally:
