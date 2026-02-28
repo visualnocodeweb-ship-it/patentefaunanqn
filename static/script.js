@@ -718,7 +718,19 @@ document.addEventListener('DOMContentLoaded', () => {
     /** Convert a datetime-local input value (local time) to UTC ISO string for the API. */
     function localToUTC(localValue) {
         if (!localValue) return '';
-        return new Date(localValue).toISOString().slice(0, 19);
+        // Avoid Date(string) parsing ambiguity across browsers.
+        // datetime-local has no timezone; interpret it explicitly as local time.
+        const m = localValue.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (!m) return '';
+        const year = Number(m[1]);
+        const month = Number(m[2]) - 1;
+        const day = Number(m[3]);
+        const hour = Number(m[4]);
+        const minute = Number(m[5]);
+        const second = Number(m[6] || '00');
+        const localDate = new Date(year, month, day, hour, minute, second, 0);
+        if (Number.isNaN(localDate.getTime())) return '';
+        return localDate.toISOString().slice(0, 19);
     }
 
     document.querySelectorAll('[data-preset]').forEach(btn => {
