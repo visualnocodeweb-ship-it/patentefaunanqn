@@ -51,6 +51,8 @@ def require_login():
     return redirect(url_for('login', next=request.script_root + request.path))
 
 _default_limit = os.environ.get("RATE_LIMIT_DEFAULT", "120 per minute")
+_browse_images_limit = os.environ.get("RATE_LIMIT_BROWSE_IMAGES", "120 per minute")
+_browse_image_limit = os.environ.get("RATE_LIMIT_BROWSE_IMAGE", "600 per minute")
 limiter = Limiter(
     get_remote_address,
     app=app,
@@ -309,7 +311,7 @@ def stats():
 _VALID_BROWSE_TYPES = {'vehicle_detection', 'vehicle_picture', 'plate'}
 
 @app.route('/api/browse_images', methods=['GET'])
-@limiter.limit("30 per minute")
+@limiter.limit(_browse_images_limit, override_defaults=True)
 def browse_images():
     """Keyset-paginated image metadata for the global carousel."""
     cursor_ts = request.args.get('cursor_ts', None, type=str)
@@ -365,7 +367,7 @@ def browse_images():
 
 
 @app.route('/api/browse_image/<image_id>', methods=['GET'])
-@limiter.limit("30 per minute")
+@limiter.limit(_browse_image_limit, override_defaults=True)
 def browse_image(image_id):
     """Serves raw image bytes for a single image by ID."""
     if not _UUID_RE.match(image_id):

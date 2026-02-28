@@ -811,7 +811,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let browseTotalCount = 0;
     let browseTypes = ['vehicle_picture'];
     let browseAbort = null;
+    const preloadedBrowseImageIds = new Set();
     const browseFilters = document.getElementById('browse-filters');
+
+    function preloadBrowseImageById(imageId) {
+        if (!imageId || preloadedBrowseImageIds.has(imageId)) return;
+        preloadedBrowseImageIds.add(imageId);
+        const pre = new Image();
+        pre.src = BASE + '/api/browse_image/' + imageId;
+    }
 
     function showModalError(msg) {
         modalError.textContent = msg;
@@ -1301,6 +1309,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modalSpinner.hidden = false;
         modalImage.style.display = 'none';
         modalImage.src = BASE + '/api/browse_image/' + item.image_id;
+        preloadedBrowseImageIds.add(item.image_id);
         const browseTypeLabels = { vehicle_detection: 'Detección', vehicle_picture: 'Vehículo', plate: 'Patente' };
         modalImage.alt = `Imagen ${browseTypeLabels[item.image_type] || item.image_type} — Patente ${item.plate_text || 'desconocida'}`;
 
@@ -1315,12 +1324,11 @@ document.addEventListener('DOMContentLoaded', () => {
         carouselPrev.style.display = showNav ? '' : 'none';
         carouselNext.style.display = showNav ? '' : 'none';
 
-        // Preload nearby image binaries into browser cache (3 ahead, 3 behind)
-        for (let offset = -3; offset <= 3; offset++) {
+        // Preload nearby images conservatively to avoid request bursts.
+        for (let offset = -1; offset <= 1; offset++) {
             const i = browseIndex + offset;
             if (offset !== 0 && i >= 0 && i < browseItems.length) {
-                const pre = new Image();
-                pre.src = BASE + '/api/browse_image/' + browseItems[i].image_id;
+                preloadBrowseImageById(browseItems[i].image_id);
             }
         }
 
@@ -1379,6 +1387,7 @@ document.addEventListener('DOMContentLoaded', () => {
         browseItems = [];
         browseIndex = 0;
         browseTotalCount = 0;
+        preloadedBrowseImageIds.clear();
 
         // Sync checkboxes with browseTypes
         browseFilters.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -1415,6 +1424,7 @@ document.addEventListener('DOMContentLoaded', () => {
         browseItems = [];
         browseIndex = 0;
         browseTotalCount = 0;
+        preloadedBrowseImageIds.clear();
 
         showSpinner();
         const loaded = await browseLoadPage('forward');
