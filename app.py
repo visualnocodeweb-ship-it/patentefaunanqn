@@ -238,6 +238,10 @@ def all_patents():
         page_size = 100
     if min_confidence_filter is not None:
         min_confidence_filter = max(0.0, min(1.0, min_confidence_filter))
+    invalid_plates_only = request.args.get('invalid_plates_only', 'false').lower() == 'true'
+    location_filter_raw = request.args.get('location_filter', None, type=str)
+    location_filter = [v.strip() for v in location_filter_raw.split(',') if v.strip()] if location_filter_raw else None
+    invert_filters = request.args.get('invert_filters', 'false').lower() == 'true'
 
     try:
         patents, total_count = db_utils.fetch_all_patents_paginated(
@@ -247,7 +251,10 @@ def all_patents():
             type_filter=type_filter,
             start_date_filter=start_date_filter,
             end_date_filter=end_date_filter,
-            min_confidence_filter=min_confidence_filter
+            min_confidence_filter=min_confidence_filter,
+            invalid_plates_only=invalid_plates_only,
+            location_filter=location_filter,
+            invert_filters=invert_filters,
         )
     except (DBError, RuntimeError):
         return jsonify({"error": "Service temporarily unavailable"}), 503
@@ -261,11 +268,36 @@ def all_patents():
 
 @app.route('/api/stats', methods=['GET'])
 def stats():
-    """Fetches aggregate statistics for detection events."""
+    """Fetches aggregate statistics for detection events, respecting the same filters as /api/all_patents."""
     start_date = request.args.get('start_date', None, type=str)
     end_date = request.args.get('end_date', None, type=str)
+    search_term = request.args.get('search_term', None, type=str)
+    brand_filter_raw = request.args.get('brand_filter', None, type=str)
+    color_filter_raw = request.args.get('color_filter', None, type=str)
+    type_filter_raw  = request.args.get('type_filter',  None, type=str)
+    brand_filter = [v.strip() for v in brand_filter_raw.split(',') if v.strip()] if brand_filter_raw else None
+    color_filter = [v.strip() for v in color_filter_raw.split(',') if v.strip()] if color_filter_raw else None
+    type_filter  = [v.strip() for v in type_filter_raw.split(',')  if v.strip()] if type_filter_raw  else None
+    min_confidence_filter = request.args.get('min_confidence_filter', None, type=float)
+    if min_confidence_filter is not None:
+        min_confidence_filter = max(0.0, min(1.0, min_confidence_filter))
+    invalid_plates_only = request.args.get('invalid_plates_only', 'false').lower() == 'true'
+    location_filter_raw = request.args.get('location_filter', None, type=str)
+    location_filter = [v.strip() for v in location_filter_raw.split(',') if v.strip()] if location_filter_raw else None
+    invert_filters = request.args.get('invert_filters', 'false').lower() == 'true'
     try:
-        result = db_utils.fetch_stats(start_date_filter=start_date, end_date_filter=end_date)
+        result = db_utils.fetch_stats(
+            search_term=search_term,
+            brand_filter=brand_filter,
+            color_filter=color_filter,
+            type_filter=type_filter,
+            start_date_filter=start_date,
+            end_date_filter=end_date,
+            min_confidence_filter=min_confidence_filter,
+            invalid_plates_only=invalid_plates_only,
+            location_filter=location_filter,
+            invert_filters=invert_filters,
+        )
     except (DBError, RuntimeError):
         return jsonify({"error": "Service temporarily unavailable"}), 503
     if result:
@@ -363,6 +395,41 @@ def get_image(event_id):
     if images:
         return jsonify({"images": images})
     return jsonify({"error": "Image not found for this event_id"}), 404
+
+@app.route('/api/event/<event_id>', methods=['GET'])
+def get_event(event_id):
+    if not _UUID_RE.match(event_id):
+        return jsonify({"error": "Invalid event_id format"}), 400
+    try:
+        event = db_utils.fetch_event_by_id(event_id)
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
+    if event is None:
+        return jsonify({"error": "Event not found"}), 404
+    return jsonify(event)
+
+@app.route('/api/event/<event_id>', methods=['PATCH'])
+def update_event(event_id):
+    """Update editable fields on a detection event and mark it as manually edited."""
+    if not _UUID_RE.match(event_id):
+        return jsonify({"error": "Invalid event_id format"}), 400
+    body = request.get_json(silent=True) or {}
+    plate_text = body.get('plate_text', '').strip()
+    if not plate_text:
+        return jsonify({"error": "plate_text is required"}), 400
+    vehicle_brand = body.get('vehicle_brand', '').strip() or None
+    vehicle_color = body.get('vehicle_color', '').strip() or None
+    vehicle_type  = body.get('vehicle_type',  '').strip() or None
+    try:
+        updated = db_utils.update_detection_event(
+            event_id, plate_text, vehicle_brand, vehicle_color, vehicle_type
+        )
+    except (DBError, RuntimeError):
+        return jsonify({"error": "Service temporarily unavailable"}), 503
+    if not updated:
+        return jsonify({"error": "Event not found"}), 404
+    return jsonify({"ok": True})
+
 
 if __name__ == '__main__':
     app.run(

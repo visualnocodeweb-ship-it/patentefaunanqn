@@ -7,6 +7,18 @@ import datetime
 import time
 logger = logging.getLogger(__name__)
 
+# Mapeo de locaciones (nombre en UI) → lista de camera_device_no en la DB
+# Actualizar cuando se agreguen nuevas cámaras.
+CAMERA_LOCATION_MAP: dict[str, list[str]] = {
+    "Piedra del Águila": ["Camera 01"],
+}
+
+# Reverse map: camera_device_no → location name
+_DEVICE_LOCATION_MAP: dict[str, str] = {}
+for _loc_name, _devices in CAMERA_LOCATION_MAP.items():
+    for _dev in _devices:
+        _DEVICE_LOCATION_MAP[_dev] = _loc_name
+
 # Mapeo para normalizar marcas de vehículos
 VEHICLE_BRAND_NORMALIZATION_MAP = {
     "Cheurolet": "Chevrolet",
@@ -351,28 +363,57 @@ def _validate_date(value):
 
 def _build_where_clause(search_term=None, brand_filter=None, color_filter=None,
                         type_filter=None, start_date_filter=None, end_date_filter=None,
-                        min_confidence_filter=None):
+                        min_confidence_filter=None, invalid_plates_only=False,
+                        location_filter=None, invert_filters=False):
     """Builds a shared WHERE clause and params list for detection_events queries."""
     conditions = []
     params = []
     if search_term:
         conditions.append("camera_plate_text ILIKE %s")
         params.append(f'%{search_term}%')
+    if invalid_plates_only:
+        conditions.append(
+            "(camera_plate_text IS NULL OR NOT ("
+            "camera_plate_text ~ '^[A-Z]{3}[0-9]{3}$'"
+            " OR camera_plate_text ~ '^[A-Z]{2}[0-9]{3}[A-Z]{2}$'))"
+        )
+    if location_filter:
+        device_nos = []
+        for loc in location_filter:
+            device_nos.extend(CAMERA_LOCATION_MAP.get(loc, []))
+        if device_nos:
+            placeholders = ','.join(['%s'] * len(device_nos))
+            if invert_filters:
+                conditions.append(f"(camera_device_no IS NULL OR camera_device_no NOT IN ({placeholders}))")
+            else:
+                conditions.append(f"camera_device_no IN ({placeholders})")
+            params.extend(device_nos)
+        else:
+            conditions.append("FALSE")
     if brand_filter:
         expanded_brands = []
         for b in brand_filter:
             expanded_brands.append(b)
             expanded_brands.extend(_BRAND_RAW_VARIANTS.get(b, []))
         placeholders = ','.join(['%s'] * len(expanded_brands))
-        conditions.append(f"vehicle_brand IN ({placeholders})")
+        if invert_filters:
+            conditions.append(f"(vehicle_brand IS NULL OR vehicle_brand NOT IN ({placeholders}))")
+        else:
+            conditions.append(f"vehicle_brand IN ({placeholders})")
         params.extend(expanded_brands)
     if color_filter:
         placeholders = ','.join(['%s'] * len(color_filter))
-        conditions.append(f"vehicle_color IN ({placeholders})")
+        if invert_filters:
+            conditions.append(f"(vehicle_color IS NULL OR vehicle_color NOT IN ({placeholders}))")
+        else:
+            conditions.append(f"vehicle_color IN ({placeholders})")
         params.extend(color_filter)
     if type_filter:
         placeholders = ','.join(['%s'] * len(type_filter))
-        conditions.append(f"vehicle_type IN ({placeholders})")
+        if invert_filters:
+            conditions.append(f"(vehicle_type IS NULL OR vehicle_type NOT IN ({placeholders}))")
+        else:
+            conditions.append(f"vehicle_type IN ({placeholders})")
         params.extend(type_filter)
     start_date_filter = _validate_date(start_date_filter)
     if start_date_filter:
@@ -393,7 +434,9 @@ def _build_where_clause(search_term=None, brand_filter=None, color_filter=None,
 
 def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_filter=None,
                                 color_filter=None, type_filter=None, start_date_filter=None,
-                                end_date_filter=None, min_confidence_filter=None):
+                                end_date_filter=None, min_confidence_filter=None,
+                                invalid_plates_only=False, location_filter=None,
+                                invert_filters=False):
     """
     Recupera todos los datos de patente de detection_events con paginación, búsqueda y filtros.
     Incluye conteo de avistamientos por patente (sightings) via window function.
@@ -409,7 +452,10 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
         offset = (page - 1) * page_size
         where_clause, query_params = _build_where_clause(
             search_term, brand_filter, color_filter, type_filter,
-            start_date_filter, end_date_filter, min_confidence_filter
+            start_date_filter, end_date_filter, min_confidence_filter,
+            invalid_plates_only=invalid_plates_only,
+            location_filter=location_filter,
+            invert_filters=invert_filters,
         )
 
         # Consulta de conteo
@@ -425,7 +471,9 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
             vehicle_color,
             vehicle_type,
             camera_confidence AS plate_confidence,
-            created_at
+            created_at,
+            is_manually_edited,
+            camera_device_no
         FROM
             detection_events
         """ + where_clause + " ORDER BY created_at DESC LIMIT %s OFFSET %s;"
@@ -438,6 +486,9 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
             row_dict = dict(zip(columns, row))
             if 'vehicle_brand' in row_dict:
                 row_dict['vehicle_brand'] = normalize_vehicle_brand(row_dict['vehicle_brand'])
+            row_dict['location'] = _DEVICE_LOCATION_MAP.get(
+                row_dict.get('camera_device_no'), row_dict.get('camera_device_no') or 'Desconocida'
+            )
             patents.append(row_dict)
 
         # Per-page sightings: count occurrences of plates on this page
@@ -474,9 +525,14 @@ def fetch_all_patents_paginated(page=1, page_size=10, search_term=None, brand_fi
         if conn:
             _put_conn(conn)
 
-def fetch_stats(start_date_filter=None, end_date_filter=None):
+def fetch_stats(search_term=None, brand_filter=None, color_filter=None,
+                type_filter=None, start_date_filter=None, end_date_filter=None,
+                min_confidence_filter=None, invalid_plates_only=False,
+                location_filter=None, invert_filters=False):
     """
     Recupera estadísticas agregadas de detection_events.
+    Acepta los mismos filtros que fetch_all_patents_paginated para mantener
+    coherencia entre la tabla y la barra de estadísticas.
     Retorna un diccionario con métricas clave.
     """
     conn = None
@@ -485,8 +541,16 @@ def fetch_stats(start_date_filter=None, end_date_filter=None):
         cur = conn.cursor()
 
         where_clause, params = _build_where_clause(
+            search_term=search_term,
+            brand_filter=brand_filter,
+            color_filter=color_filter,
+            type_filter=type_filter,
             start_date_filter=start_date_filter,
-            end_date_filter=end_date_filter
+            end_date_filter=end_date_filter,
+            min_confidence_filter=min_confidence_filter,
+            invalid_plates_only=invalid_plates_only,
+            location_filter=location_filter,
+            invert_filters=invert_filters,
         )
 
         query = """
@@ -622,7 +686,8 @@ def fetch_filter_options():
         types = sorted({row[0].strip() for row in cur.fetchall() if row[0] and row[0].strip()})
 
         cur.close()
-        result = {"brands": brands, "colors": colors, "types": types}
+        locations = sorted(CAMERA_LOCATION_MAP.keys())
+        result = {"brands": brands, "colors": colors, "types": types, "locations": locations}
         _filter_options_cache = result
         _filter_options_cache_ts = time.time()
         return result
@@ -819,6 +884,63 @@ def fetch_browse_image_by_id(image_id):
         raise
     except Exception as e:
         logger.error("Error fetching browse image by id: %s", e)
+        raise DBError("Database operation failed") from e
+    finally:
+        if conn:
+            _put_conn(conn)
+
+
+def fetch_event_by_id(event_id):
+    """Returns editable fields for a single detection event, or None if not found."""
+    conn = None
+    try:
+        conn = _get_conn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT camera_plate_text, vehicle_brand, vehicle_color, vehicle_type
+                FROM detection_events
+                WHERE id = %s
+            """, (event_id,))
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return {
+                'plate_text':    row[0],
+                'vehicle_brand': row[1],
+                'vehicle_color': row[2],
+                'vehicle_type':  row[3],
+            }
+    finally:
+        if conn:
+            _pool.putconn(conn)
+
+
+def update_detection_event(event_id, plate_text, vehicle_brand, vehicle_color, vehicle_type):
+    """Overwrites editable fields and marks row as manually edited."""
+    conn = None
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE detection_events
+            SET camera_plate_text   = %s,
+                vehicle_brand       = %s,
+                vehicle_color       = %s,
+                vehicle_type        = %s,
+                is_manually_edited  = TRUE
+            WHERE id = %s
+        """, (plate_text, vehicle_brand or None, vehicle_color or None, vehicle_type or None, event_id))
+        conn.commit()
+        updated = cur.rowcount == 1
+        cur.close()
+        return updated
+    except psycopg2.Error as e:
+        logger.error("Error updating detection event %s: %s", event_id, e)
+        raise DBError("Database operation failed") from e
+    except RuntimeError:
+        raise
+    except Exception as e:
+        logger.error("Unexpected error updating detection event %s: %s", event_id, e)
         raise DBError("Database operation failed") from e
     finally:
         if conn:

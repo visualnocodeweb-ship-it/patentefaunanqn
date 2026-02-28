@@ -59,8 +59,8 @@ h1 {
 /* Stats bar */
 .stats-bar {
     display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
+    flex-direction: column;
+    gap: 6px;
     padding: 12px 16px;
     background-color: #f0f4f8;
     border: 1px solid #d0d7de;
@@ -68,6 +68,12 @@ h1 {
     margin-bottom: 16px;
     font-size: 14px;
     font-variant-numeric: tabular-nums;
+}
+
+.stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
 }
 
 .stats-bar .stat-item {
@@ -85,7 +91,7 @@ h1 {
 }
 
 .stats-bar .stat-value.low-conf {
-    color: #c00;
+    color: #333;
 }
 
 /* Thumbnail strip */
@@ -114,14 +120,7 @@ h1 {
     box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
-/* Time presets */
-.time-presets {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 12px;
-}
-
+/* Time preset buttons (inline in .table-controls) */
 .time-preset-btn {
     padding: 6px 12px;
     background-color: #e9ecef;
@@ -131,7 +130,9 @@ h1 {
     cursor: pointer;
     font-size: 13px;
     touch-action: manipulation;
+    white-space: nowrap;
 }
+
 
 .time-preset-btn:hover {
     background-color: #dee2e6;
@@ -150,18 +151,32 @@ h1 {
     white-space: nowrap;
 }
 
-/* Table controls — flat flex row */
+.filter-separator {
+    color: #ccc;
+    font-size: 18px;
+    line-height: 1;
+    align-self: center;
+    user-select: none;
+}
+
+/* Table controls — two rows */
 .table-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.filter-row {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-    margin-bottom: 16px;
     align-items: center;
 }
 
-.table-controls input[type="text"],
-.table-controls input[type="number"],
-.table-controls input[type="date"] {
+.filter-row input[type="text"],
+.filter-row input[type="number"],
+.filter-row input[type="date"] {
     padding: 7px 10px;
     border: 1px solid #ddd;
     border-radius: 4px;
@@ -169,12 +184,43 @@ h1 {
     width: 120px;
 }
 
-.table-controls input[type="date"] {
+.filter-row input[type="date"] {
     width: 140px;
 }
 
+
+#invert-selection-button {
+    padding: 5px 14px;
+    background-color: #e9ecef;
+    color: #333;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    touch-action: manipulation;
+    margin-left: auto;
+}
+
+#invert-selection-button:hover {
+    background-color: #dee2e6;
+}
+
+#invert-selection-button.active {
+    background-color: #fd7e14;
+    color: #fff;
+    border-color: #fd7e14;
+}
+
+/* Dimmed appearance for filter controls when invert mode is active */
+.filters-locked .filter-row input,
+.filters-locked .filter-row .ms-trigger,
+.filters-locked .filter-row button:not(#invert-selection-button):not(#clear-all-filters-button) {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
 #clear-all-filters-button {
-    padding: 7px 14px;
+    padding: 5px 14px;
     background-color: #6c757d;
     color: white;
     border: none;
@@ -567,14 +613,14 @@ a:focus-visible {
 
 /* Responsive: tablet / mobile */
 @media (max-width: 768px) {
-    .table-controls {
+    .filter-row {
         flex-direction: column;
         align-items: stretch;
     }
 
-    .table-controls input[type="text"],
-    .table-controls input[type="number"],
-    .table-controls input[type="date"] {
+    .filter-row input[type="text"],
+    .filter-row input[type="number"],
+    .filter-row input[type="date"] {
         width: 100%;
         box-sizing: border-box;
     }
@@ -583,10 +629,18 @@ a:focus-visible {
         margin-left: 0;
     }
 
+    .filter-row .time-preset-btn {
+        flex: 1 1 auto;
+    }
+
     .stats-bar {
         font-size: 12px;
-        gap: 10px;
+        gap: 4px;
         padding: 10px 12px;
+    }
+
+    .stats-row {
+        gap: 10px;
     }
 
     .ms-panel {
@@ -616,6 +670,80 @@ a:focus-visible {
         font-size: 1.3rem;
     }
 }
+
+/* Invalid plates toggle button */
+#toggle-invalid-plates {
+    padding: 6px 12px;
+    background-color: #e9ecef;
+    color: #333;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    touch-action: manipulation;
+    white-space: nowrap;
+}
+#toggle-invalid-plates:hover { background-color: #dee2e6; }
+#toggle-invalid-plates.active {
+    background-color: #dc3545;
+    color: #fff;
+    border-color: #dc3545;
+}
+
+/* Edited indicator badge */
+.edited-badge {
+    display: inline-block;
+    font-size: 11px;
+    color: #0056b3;
+    margin-right: 4px;
+    vertical-align: middle;
+    cursor: default;
+}
+
+/* Edit row button */
+.edit-row-btn {
+    padding: 3px 8px;
+    background: none;
+    border: 1px solid #ced4da;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #555;
+    margin-left: 4px;
+    touch-action: manipulation;
+}
+.edit-row-btn:hover { border-color: #007bff; color: #007bff; }
+
+/* Inline edit inputs within table cells */
+.row-editing input[type="text"],
+.row-editing select {
+    width: 100%;
+    padding: 3px 6px;
+    font-size: 12px;
+    border: 1px solid #007bff;
+    border-radius: 3px;
+    box-sizing: border-box;
+}
+
+/* Save/cancel — stack vertically to fit actions column */
+.row-editing td:last-child {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.save-row-btn,
+.cancel-row-btn {
+    padding: 3px 8px;
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    touch-action: manipulation;
+    white-space: nowrap;
+}
+.save-row-btn { background: #28a745; }
+.cancel-row-btn { background: #6c757d; }
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {

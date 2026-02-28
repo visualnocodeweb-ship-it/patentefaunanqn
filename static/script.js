@@ -55,6 +55,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentStartDateFilter = '';
     let currentEndDateFilter = '';
     let currentMinConfidenceFilter = '';
+    let currentInvalidPlatesOnly = false;
+    let currentLocationFilter = [];
+    let currentInvertFilters = false;
+
+    // Cache for filter options (brands/colors/types) used by inline edit selects
+    let filterOptionsCache = { brands: [], colors: [], types: [] };
 
     // AbortController for in-flight requests
     let tableAbort = null;
@@ -76,11 +82,13 @@ document.addEventListener('DOMContentLoaded', () => {
          * @param {string} label        - Base label shown on trigger button
          * @param {function} onChange   - Called with no args whenever selection changes
          */
-        constructor(containerId, label, onChange) {
+        constructor(containerId, label, onChange, opts = {}) {
             this._label = label;
             this._onChange = onChange;
             this._options = [];
             this._selected = new Set();
+            this._valueMode = opts.valueMode || false;
+            this._placeholder = opts.placeholder || label;
 
             // Build DOM
             this._root = document.createElement('div');
@@ -135,7 +143,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         _updateTrigger() {
             const count = this._selected.size;
-            this._trigger.textContent = count > 0 ? `${this._label} (${count})` : this._label;
+            if (this._valueMode) {
+                if (count === 0) {
+                    this._trigger.textContent = this._placeholder;
+                } else {
+                    const first = [...this._selected][0];
+                    this._trigger.textContent = count > 1 ? `${first} +${count - 1}` : first;
+                }
+            } else {
+                this._trigger.textContent = count > 0 ? `${this._label} (${count})` : this._label;
+            }
             this._trigger.classList.toggle('has-selection', count > 0);
         }
 
@@ -185,6 +202,19 @@ document.addEventListener('DOMContentLoaded', () => {
             this._updateTrigger();
         }
 
+        /** Invert selection: select unselected, deselect selected. */
+        invert() {
+            this._options.forEach(opt => {
+                if (this._selected.has(opt)) this._selected.delete(opt);
+                else this._selected.add(opt);
+            });
+            this._panel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = this._selected.has(cb.value);
+                cb.setAttribute('aria-selected', cb.checked ? 'true' : 'false');
+            });
+            this._updateTrigger();
+        }
+
         /** Clear all selections. */
         reset() {
             this._selected.clear();
@@ -197,9 +227,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Instantiate multi-select dropdowns
-    const dropdownBrand = new MultiSelectDropdown('filter-brand-container', 'Marca', () => debouncedFetch());
-    const dropdownColor = new MultiSelectDropdown('filter-color-container', 'Color', () => debouncedFetch());
-    const dropdownType  = new MultiSelectDropdown('filter-type-container',  'Tipo',  () => debouncedFetch());
+    const dropdownBrand     = new MultiSelectDropdown('filter-brand-container',    'Marca',    () => debouncedFetch());
+    const dropdownColor     = new MultiSelectDropdown('filter-color-container',    'Color',    () => debouncedFetch());
+    const dropdownType      = new MultiSelectDropdown('filter-type-container',     'Tipo',     () => debouncedFetch());
+    const dropdownLocation  = new MultiSelectDropdown('filter-location-container', '', () => debouncedFetch(), { valueMode: true, placeholder: 'Todas' });
 
     // --- URL state management ---
     function getFiltersFromURL() {
@@ -214,6 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
             brand:       splitParam('brand_filter'),
             color:       splitParam('color_filter'),
             type:        splitParam('type_filter'),
+            location:    splitParam('location_filter'),
             startDate:   params.get('start_date_filter') || '',
             endDate:     params.get('end_date_filter') || '',
             minConfidence: params.get('min_confidence_filter') || ''
@@ -224,9 +256,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const params = new URLSearchParams();
         if (currentPage > 1) params.set('page', currentPage);
         if (currentPatentFilter) params.set('search_term', currentPatentFilter);
-        if (currentBrandFilter.length) params.set('brand_filter', currentBrandFilter.join(','));
-        if (currentColorFilter.length) params.set('color_filter', currentColorFilter.join(','));
-        if (currentTypeFilter.length)  params.set('type_filter',  currentTypeFilter.join(','));
+        if (currentBrandFilter.length)    params.set('brand_filter',    currentBrandFilter.join(','));
+        if (currentColorFilter.length)    params.set('color_filter',    currentColorFilter.join(','));
+        if (currentTypeFilter.length)     params.set('type_filter',     currentTypeFilter.join(','));
+        if (currentLocationFilter.length) params.set('location_filter', currentLocationFilter.join(','));
         if (currentStartDateFilter) params.set('start_date_filter', currentStartDateFilter);
         if (currentEndDateFilter) params.set('end_date_filter', currentEndDateFilter);
         if (currentMinConfidenceFilter) params.set('min_confidence_filter', currentMinConfidenceFilter);
@@ -242,24 +275,26 @@ document.addEventListener('DOMContentLoaded', () => {
     currentBrandFilter = urlState.brand;
     currentColorFilter = urlState.color;
     currentTypeFilter  = urlState.type;
+    currentLocationFilter = urlState.location;
     currentStartDateFilter = urlState.startDate;
     currentEndDateFilter   = urlState.endDate;
     currentMinConfidenceFilter = urlState.minConfidence;
 
-    // Populate inputs from URL state
+    // Populate inputs from URL state (dates are UTC in URL, local in input)
     filterPatent.value    = currentPatentFilter;
-    filterStartDate.value = currentStartDateFilter;
-    filterEndDate.value   = currentEndDateFilter;
+    filterStartDate.value = currentStartDateFilter ? toLocalISODateTime(new Date(currentStartDateFilter + 'Z')).slice(0, 16) : '';
+    filterEndDate.value   = currentEndDateFilter ? toLocalISODateTime(new Date(currentEndDateFilter + 'Z')).slice(0, 16) : '';
     // Dropdowns: setSelected() is called after populate() in fetchAndInitDropdowns below
 
     // --- Read all filter inputs into state ---
     function readAllFilters() {
-        currentPatentFilter = filterPatent.value.trim();
-        currentBrandFilter  = dropdownBrand.getSelected();
-        currentColorFilter  = dropdownColor.getSelected();
-        currentTypeFilter   = dropdownType.getSelected();
-        currentStartDateFilter = filterStartDate.value;
-        currentEndDateFilter   = filterEndDate.value;
+        currentPatentFilter   = filterPatent.value.trim();
+        currentBrandFilter    = dropdownBrand.getSelected();
+        currentColorFilter    = dropdownColor.getSelected();
+        currentTypeFilter     = dropdownType.getSelected();
+        currentLocationFilter = dropdownLocation.getSelected();
+        currentStartDateFilter = localToUTC(filterStartDate.value);
+        currentEndDateFilter   = localToUTC(filterEndDate.value);
         currentMinConfidenceFilter = '';
         currentPage = 1;
         updateViewAllBtn();
@@ -276,24 +311,42 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Table row ---
     function createTableRow(item) {
         const row = document.createElement('tr');
+        const editedBadge = item.is_manually_edited
+            ? '<span class="edited-badge" title="Editado manualmente">✎</span>'
+            : '';
         row.innerHTML = `
             <td>${item.sightings != null ? item.sightings : '-'}</td>
-            <td>${escapeHtml(item.plate_text) || 'No detectada'}</td>
+            <td>${editedBadge}${escapeHtml(item.plate_text) || 'No detectada'}</td>
             <td>${escapeHtml(item.vehicle_brand) || 'N/A'}</td>
             <td>${escapeHtml(item.vehicle_color) || 'N/A'}</td>
             <td>${escapeHtml(item.vehicle_type) || 'N/A'}</td>
+            <td>${escapeHtml(item.location) || 'N/A'}</td>
             <td>${item.plate_confidence ? (item.plate_confidence * 100).toFixed(2) + '%' : 'N/A'}</td>
             <td>${new Date(item.created_at).toLocaleString()}</td>
-            <td><button data-event-id="${escapeHtml(item.event_id)}" class="view-image-button">Ver Imágenes</button></td>
+            <td>
+                <button data-event-id="${escapeHtml(item.event_id)}" class="view-image-button">Ver Imágenes</button>
+                <button class="edit-row-btn"
+                        data-event-id="${escapeHtml(item.event_id)}"
+                        data-plate="${escapeHtml(item.plate_text || '')}"
+                        data-brand="${escapeHtml(item.vehicle_brand || '')}"
+                        data-color="${escapeHtml(item.vehicle_color || '')}"
+                        data-type="${escapeHtml(item.vehicle_type || '')}">✎</button>
+            </td>
         `;
         return row;
     }
 
     function displayPatentTableResults(results) {
+        // Unlock column widths so they adapt to new content
+        const thead = patentTableBody.closest('table').querySelector('thead tr');
+        if (thead && thead._widthsLocked) {
+            Array.from(thead.cells).forEach(th => { th.style.width = ''; });
+            thead._widthsLocked = false;
+        }
         patentTableBody.innerHTML = '';
         if (results.length === 0) {
             const noResultsRow = document.createElement('tr');
-            noResultsRow.innerHTML = '<td colspan="8">No se encontraron patentes.</td>';
+            noResultsRow.innerHTML = '<td colspan="9">No se encontraron patentes.</td>';
             patentTableBody.appendChild(noResultsRow);
             return;
         }
@@ -376,17 +429,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tableAbort) tableAbort.abort();
         tableAbort = new AbortController();
 
-        patentTableBody.innerHTML = '<tr><td colspan="8">Cargando patentes\u2026</td></tr>';
+        patentTableBody.innerHTML = '<tr><td colspan="9">Cargando patentes\u2026</td></tr>';
         let url = `${BASE}/api/all_patents?page=${currentPage}&page_size=${pageSize}`;
         if (currentPatentFilter) url += `&search_term=${encodeURIComponent(currentPatentFilter)}`;
-        if (currentBrandFilter.length) url += `&brand_filter=${encodeURIComponent(currentBrandFilter.join(','))}`;
-        if (currentColorFilter.length) url += `&color_filter=${encodeURIComponent(currentColorFilter.join(','))}`;
-        if (currentTypeFilter.length)  url += `&type_filter=${encodeURIComponent(currentTypeFilter.join(','))}`;
+        if (currentBrandFilter.length)    url += `&brand_filter=${encodeURIComponent(currentBrandFilter.join(','))}`;
+        if (currentColorFilter.length)    url += `&color_filter=${encodeURIComponent(currentColorFilter.join(','))}`;
+        if (currentTypeFilter.length)     url += `&type_filter=${encodeURIComponent(currentTypeFilter.join(','))}`;
+        if (currentLocationFilter.length) url += `&location_filter=${encodeURIComponent(currentLocationFilter.join(','))}`;
         if (currentStartDateFilter) url += `&start_date_filter=${encodeURIComponent(currentStartDateFilter)}`;
         if (currentEndDateFilter) url += `&end_date_filter=${encodeURIComponent(currentEndDateFilter)}`;
         if (currentMinConfidenceFilter) {
             url += `&min_confidence_filter=${encodeURIComponent(currentMinConfidenceFilter / 100)}`;
         }
+        if (currentInvalidPlatesOnly) url += '&invalid_plates_only=true';
+        if (currentInvertFilters) url += '&invert_filters=true';
 
         pushFiltersToURL();
 
@@ -400,7 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             if (error.name === 'AbortError') return;
             console.error('Error fetching all patents:', error);
-            patentTableBody.innerHTML = '<tr><td colspan="8">Error al cargar las patentes.</td></tr>';
+            patentTableBody.innerHTML = '<tr><td colspan="9">Error al cargar las patentes.</td></tr>';
         }
     }
 
@@ -411,8 +467,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let url = `${BASE}/api/stats`;
         const params = new URLSearchParams();
+        if (currentPatentFilter) params.set('search_term', currentPatentFilter);
+        if (currentBrandFilter.length)    params.set('brand_filter',    currentBrandFilter.join(','));
+        if (currentColorFilter.length)    params.set('color_filter',    currentColorFilter.join(','));
+        if (currentTypeFilter.length)     params.set('type_filter',     currentTypeFilter.join(','));
+        if (currentLocationFilter.length) params.set('location_filter', currentLocationFilter.join(','));
         if (currentStartDateFilter) params.set('start_date', currentStartDateFilter);
         if (currentEndDateFilter) params.set('end_date', currentEndDateFilter);
+        if (currentMinConfidenceFilter) params.set('min_confidence_filter', currentMinConfidenceFilter / 100);
+        if (currentInvalidPlatesOnly) params.set('invalid_plates_only', 'true');
+        if (currentInvertFilters) params.set('invert_filters', 'true');
         const qs = params.toString();
         if (qs) url += '?' + qs;
 
@@ -430,31 +494,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderStats(data) {
         statsBar.innerHTML = '';
-        const items = [
+
+        function buildRow(items) {
+            const row = document.createElement('div');
+            row.className = 'stats-row';
+            items.forEach(item => {
+                const el = document.createElement('span');
+                el.className = 'stat-item';
+                const label = document.createElement('span');
+                label.className = 'stat-label';
+                label.textContent = item.label + ':';
+                const value = document.createElement('span');
+                value.className = 'stat-value' + (item.cls ? ' ' + item.cls : '');
+                value.textContent = item.value;
+                el.appendChild(label);
+                el.appendChild(value);
+                row.appendChild(el);
+            });
+            return row;
+        }
+
+        const row1 = [
             { label: 'Detecciones', value: data.total },
             { label: 'Patentes únicas', value: data.unique_plates },
-            { label: 'Conf. promedio', value: (data.avg_confidence * 100).toFixed(1) + '%' },
-            { label: 'Baja conf. (<70%)', value: data.low_confidence_count, cls: data.low_confidence_count > 0 ? 'low-conf' : '' },
-            { label: 'Alta (\u226590%)', value: data.high_conf },
-            { label: 'Media (70-90%)', value: data.mid_conf },
             { label: 'Det./hora', value: data.detections_per_hour },
         ];
         if (data.last_detection_at) {
-            items.push({ label: 'Última detección', value: timeSince(new Date(data.last_detection_at)) });
+            row1.push({ label: 'Última detección', value: timeSince(new Date(data.last_detection_at)) });
         }
-        items.forEach(item => {
-            const el = document.createElement('span');
-            el.className = 'stat-item';
-            const label = document.createElement('span');
-            label.className = 'stat-label';
-            label.textContent = item.label + ':';
-            const value = document.createElement('span');
-            value.className = 'stat-value' + (item.cls ? ' ' + item.cls : '');
-            value.textContent = item.value;
-            el.appendChild(label);
-            el.appendChild(value);
-            statsBar.appendChild(el);
-        });
+
+        const row2 = [
+            { label: 'Conf. promedio', value: (data.avg_confidence * 100).toFixed(1) + '%' },
+            { label: 'Alta (\u226590%)', value: data.high_conf },
+            { label: 'Media (70-90%)', value: data.mid_conf },
+            { label: 'Baja conf. (<70%)', value: data.low_confidence_count, cls: data.low_confidence_count > 0 ? 'low-conf' : '' },
+        ];
+
+        statsBar.appendChild(buildRow(row1));
+        statsBar.appendChild(buildRow(row2));
     }
 
     function timeSince(date) {
@@ -507,23 +584,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             const options = await response.json();
-            dropdownBrand.populate(options.brands || []);
-            dropdownColor.populate(options.colors || []);
-            dropdownType.populate(options.types  || []);
+            filterOptionsCache = {
+                brands:    options.brands    || [],
+                colors:    options.colors    || [],
+                types:     options.types     || [],
+                locations: options.locations || [],
+            };
+            dropdownBrand.populate(filterOptionsCache.brands);
+            dropdownColor.populate(filterOptionsCache.colors);
+            dropdownType.populate(filterOptionsCache.types);
+            dropdownLocation.populate(filterOptionsCache.locations);
             // Restore selection from URL — intersect with available options to drop stale values
-            const brandSet  = new Set(options.brands || []);
-            const colorSet  = new Set(options.colors || []);
-            const typeSet   = new Set(options.types  || []);
-            const validBrand = currentBrandFilter.filter(v => brandSet.has(v));
-            const validColor = currentColorFilter.filter(v => colorSet.has(v));
-            const validType  = currentTypeFilter.filter(v => typeSet.has(v));
-            if (validBrand.length) dropdownBrand.setSelected(validBrand);
-            if (validColor.length) dropdownColor.setSelected(validColor);
-            if (validType.length)  dropdownType.setSelected(validType);
+            const brandSet    = new Set(options.brands    || []);
+            const colorSet    = new Set(options.colors    || []);
+            const typeSet     = new Set(options.types     || []);
+            const locationSet = new Set(options.locations || []);
+            const validBrand    = currentBrandFilter.filter(v => brandSet.has(v));
+            const validColor    = currentColorFilter.filter(v => colorSet.has(v));
+            const validType     = currentTypeFilter.filter(v => typeSet.has(v));
+            const validLocation = currentLocationFilter.filter(v => locationSet.has(v));
+            if (validBrand.length)    dropdownBrand.setSelected(validBrand);
+            if (validColor.length)    dropdownColor.setSelected(validColor);
+            if (validType.length)     dropdownType.setSelected(validType);
+            if (validLocation.length) dropdownLocation.setSelected(validLocation);
             // Re-sync state vars in case stale URL values were dropped during validation
-            currentBrandFilter = dropdownBrand.getSelected();
-            currentColorFilter = dropdownColor.getSelected();
-            currentTypeFilter  = dropdownType.getSelected();
+            currentBrandFilter    = dropdownBrand.getSelected();
+            currentColorFilter    = dropdownColor.getSelected();
+            currentTypeFilter     = dropdownType.getSelected();
+            currentLocationFilter = dropdownLocation.getSelected();
             updateViewAllBtn();
         } catch (e) {
             console.error('Error loading filter options:', e);
@@ -546,13 +634,42 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Clear all filters
+    const invertBtn = document.getElementById('invert-selection-button');
+    const filterControls = [
+        filterPatent, filterStartDate, filterEndDate,
+        document.getElementById('toggle-invalid-plates'),
+        ...document.querySelectorAll('[data-preset]'),
+    ];
+
+    function setFiltersDisabled(disabled) {
+        filterControls.forEach(el => { if (el) el.disabled = disabled; });
+        [dropdownBrand, dropdownColor, dropdownType, dropdownLocation].forEach(dd => {
+            dd._trigger.disabled = disabled;
+        });
+        document.querySelector('.table-controls').classList.toggle('filters-locked', disabled);
+    }
+
+    invertBtn.addEventListener('click', () => {
+        currentInvertFilters = !currentInvertFilters;
+        invertBtn.classList.toggle('active', currentInvertFilters);
+        setFiltersDisabled(currentInvertFilters);
+        currentPage = 1;
+        fetchPatentsTableData();
+        fetchStats();
+    });
+
     clearFiltersButton.addEventListener('click', () => {
         filterPatent.value = '';
         dropdownBrand.reset();
         dropdownColor.reset();
         dropdownType.reset();
+        dropdownLocation.reset();
         filterStartDate.value = '';
         filterEndDate.value = '';
+        currentInvalidPlatesOnly = false;
+        currentInvertFilters = false;
+        invertBtn.classList.remove('active');
+        setFiltersDisabled(false);
         document.querySelectorAll('.time-preset-btn').forEach(b => b.classList.remove('active'));
         triggerFilteredFetch();
     });
@@ -569,12 +686,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return toLocalISODate(date) + 'T' + date.toTimeString().slice(0, 8);
     }
 
-    document.querySelectorAll('.time-preset-btn').forEach(btn => {
+    /** Convert a datetime-local input value (local time) to UTC ISO string for the API. */
+    function localToUTC(localValue) {
+        if (!localValue) return '';
+        return new Date(localValue).toISOString().slice(0, 19);
+    }
+
+    document.querySelectorAll('[data-preset]').forEach(btn => {
         btn.addEventListener('click', () => {
             const preset = btn.dataset.preset;
             const now = new Date();
 
-            document.querySelectorAll('.time-preset-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
 
             if (preset === 'clear') {
                 filterStartDate.value = '';
@@ -591,11 +714,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (preset === '7d') {
                     start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
                 }
-                // Set full datetime for API, date-only for input display
-                currentStartDateFilter = toLocalISODateTime(start);
-                currentEndDateFilter = toLocalISODateTime(now);
-                filterStartDate.value = toLocalISODate(start);
-                filterEndDate.value = toLocalISODate(now);
+                // UTC for API, local for input display
+                currentStartDateFilter = start.toISOString().slice(0, 19);
+                currentEndDateFilter = now.toISOString().slice(0, 19);
+                filterStartDate.value = toLocalISODateTime(start).slice(0, 16);
+                filterEndDate.value = toLocalISODateTime(now).slice(0, 16);
             }
             // Read other filters too, then fetch
             currentPatentFilter = filterPatent.value.trim();
@@ -612,6 +735,15 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchStats();
             updateViewAllBtn();
         });
+    });
+
+    // --- Invalid plates toggle ---
+    document.getElementById('toggle-invalid-plates').addEventListener('click', function() {
+        currentInvalidPlatesOnly = !currentInvalidPlatesOnly;
+        this.classList.toggle('active', currentInvalidPlatesOnly);
+        currentPage = 1;
+        fetchPatentsTableData();
+        fetchStats();
     });
 
     // --- Pagination (event delegation) ---
@@ -718,13 +850,189 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Table click delegation for "Ver Imagen" buttons
+    // Table click delegation
     patentTableBody.addEventListener('click', (event) => {
-        if (event.target.classList.contains('view-image-button')) {
-            const eventId = event.target.dataset.eventId;
+        const target = event.target;
+
+        // "Ver Imagen" button
+        if (target.classList.contains('view-image-button')) {
+            const eventId = target.dataset.eventId;
             if (eventId) openModalForEvent(eventId);
+            return;
+        }
+
+        // Edit row button
+        if (target.classList.contains('edit-row-btn')) {
+            const row = target.closest('tr');
+            enterEditMode(row, target);
+            return;
+        }
+
+        // Save edit button
+        if (target.classList.contains('save-row-btn')) {
+            const row = target.closest('tr');
+            saveEditRow(row);
+            return;
+        }
+
+        // Cancel edit button
+        if (target.classList.contains('cancel-row-btn')) {
+            const row = target.closest('tr');
+            cancelEditRow(row);
+            return;
         }
     });
+
+    function enterEditMode(row, editBtn) {
+        if (row.classList.contains('row-editing')) return; // already editing
+
+        const eventId = editBtn.dataset.eventId;
+
+        // Store original HTML for cancel and original cell values for re-render after save
+        row._originalHTML = row.innerHTML;
+        row._eventId = eventId;
+        row._originalLocationCell = row.cells[5].innerHTML;
+        row._originalConfCell = row.cells[6].innerHTML;
+        row._originalDateCell = row.cells[7].innerHTML;
+
+        // Read current values from data attributes (sourced from DB at table load time)
+        const plate = editBtn.dataset.plate || '';
+        const brand = editBtn.dataset.brand || '';
+        const color = editBtn.dataset.color || '';
+        const type  = editBtn.dataset.type  || '';
+
+        function makeSelect(options, current) {
+            const sel = document.createElement('select');
+            const blank = document.createElement('option');
+            blank.value = '';
+            blank.textContent = '—';
+            sel.appendChild(blank);
+            options.forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt;
+                o.textContent = opt;
+                if (opt === current) o.defaultSelected = true;
+                sel.appendChild(o);
+            });
+            if (current && !options.includes(current)) {
+                const o = document.createElement('option');
+                o.value = current;
+                o.textContent = current;
+                o.defaultSelected = true;
+                sel.appendChild(o);
+            }
+            return sel.outerHTML;
+        }
+
+        const cells = row.cells;
+        // cells: 0=sightings, 1=plate, 2=brand, 3=color, 4=type, 5=location, 6=conf, 7=date, 8=actions
+
+        // Lock column widths on <th> to prevent layout shift when inputs replace text
+        const thead = row.closest('table').querySelector('thead tr');
+        if (thead && !thead._widthsLocked) {
+            Array.from(thead.cells).forEach(th => { th.style.width = th.offsetWidth + 'px'; });
+            thead._widthsLocked = true;
+        }
+
+        // Plate cell (index 1)
+        cells[1].innerHTML = `<input type="text" class="edit-plate-input" value="${escapeHtml(plate)}" maxlength="10">`;
+
+        // Brand cell (index 2)
+        cells[2].innerHTML = makeSelect(filterOptionsCache.brands, brand);
+
+        // Color cell (index 3)
+        cells[3].innerHTML = makeSelect(filterOptionsCache.colors, color);
+
+        // Type cell (index 4)
+        cells[4].innerHTML = makeSelect(filterOptionsCache.types, type);
+
+        // Actions cell (index 8) — stack vertically to avoid column overflow
+        cells[8].innerHTML = `<button class="save-row-btn">Guardar</button><button class="cancel-row-btn">Cancelar</button>`;
+
+        row.classList.add('row-editing');
+    }
+
+    async function saveEditRow(row) {
+        const eventId = row._eventId;
+        const plateInput = row.querySelector('.edit-plate-input');
+        const selects = row.querySelectorAll('td select');
+
+        const plateText   = plateInput ? plateInput.value.trim() : '';
+        const vehicleBrand = selects[0] ? selects[0].value.trim() : '';
+        const vehicleColor = selects[1] ? selects[1].value.trim() : '';
+        const vehicleType  = selects[2] ? selects[2].value.trim() : '';
+
+        if (!plateText) {
+            plateInput && (plateInput.style.borderColor = 'red');
+            return;
+        }
+
+        if (!confirm('¿Guardar los cambios?')) return;
+
+        const saveBtn = row.querySelector('.save-row-btn');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '…'; }
+
+        try {
+            const resp = await fetch(`${BASE}/api/event/${eventId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    plate_text: plateText,
+                    vehicle_brand: vehicleBrand,
+                    vehicle_color: vehicleColor,
+                    vehicle_type: vehicleType
+                })
+            });
+            if (handle401(resp)) return;
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                alert(err.error || 'Error al guardar.');
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
+                return;
+            }
+
+            // Re-render row with updated data
+            row.classList.remove('row-editing');
+            const item = {
+                event_id: eventId,
+                sightings: row.cells[0].textContent,
+                plate_text: plateText,
+                vehicle_brand: vehicleBrand || null,
+                vehicle_color: vehicleColor || null,
+                vehicle_type:  vehicleType  || null,
+                plate_confidence: null,
+                created_at: row._originalCreatedAt,
+                is_manually_edited: true
+            };
+            // Extract confidence and date from original row cells (unchanged)
+            const newRow = createTableRow(item);
+            // Preserve original confidence and date from stored cells
+            newRow.cells[5].innerHTML = row._originalLocationCell || newRow.cells[5].innerHTML;
+            newRow.cells[6].innerHTML = row._originalConfCell || newRow.cells[6].innerHTML;
+            newRow.cells[7].innerHTML = row._originalDateCell || newRow.cells[7].innerHTML;
+            row.parentNode.replaceChild(newRow, row);
+            // Unlock column widths
+            const thead = newRow.closest('table').querySelector('thead tr');
+            if (thead && thead._widthsLocked) {
+                Array.from(thead.cells).forEach(th => { th.style.width = ''; });
+                thead._widthsLocked = false;
+            }
+        } catch (e) {
+            console.error('Error saving edit:', e);
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
+        }
+    }
+
+    function cancelEditRow(row) {
+        row.classList.remove('row-editing');
+        row.innerHTML = row._originalHTML;
+        // Unlock column widths so table adapts naturally
+        const thead = row.closest('table').querySelector('thead tr');
+        if (thead && thead._widthsLocked) {
+            Array.from(thead.cells).forEach(th => { th.style.width = ''; });
+            thead._widthsLocked = false;
+        }
+    }
 
     function closeModal() {
         imageModal.style.display = 'none';

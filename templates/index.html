@@ -12,7 +12,7 @@
     <meta property="og:image" content="{{ url_for('static', filename='og-image.png', _external=True) }}">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
     <title>Gestión de Imágenes LPR — Patentes Fauna NQN</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=4">
 </head>
 <body>
     <a href="#main-content" class="skip-link">Saltar al contenido principal</a>
@@ -29,23 +29,29 @@
         <div id="latest-thumbnails" class="thumbnail-strip" aria-label="Últimas detecciones"></div>
 
         <section id="patent-table-section">
-            <div class="time-presets">
-                <button class="time-preset-btn" data-preset="1h">Última hora</button>
-                <button class="time-preset-btn" data-preset="24h">Últimas 24h</button>
-                <button class="time-preset-btn" data-preset="7d">Últimos 7 días</button>
-                <button class="time-preset-btn" data-preset="clear">Limpiar fechas</button>
-            </div>
-
             <div class="table-controls">
-                <input type="text" id="filter-patent" autocomplete="off" placeholder="Patente…" title="Filtrar por patente">
-                <div id="filter-brand-container"></div>
-                <div id="filter-color-container"></div>
-                <div id="filter-type-container"></div>
-                <span class="filter-label">Desde</span>
-                <input type="date" id="filter-start-date" autocomplete="off" title="Fecha desde">
-                <span class="filter-label">Hasta</span>
-                <input type="date" id="filter-end-date" autocomplete="off" title="Fecha hasta">
-                <button id="clear-all-filters-button">Limpiar</button>
+                <div class="filter-row">
+                    <span class="filter-label">Locación:</span>
+                    <div id="filter-location-container"></div>
+                    <span class="filter-separator">|</span>
+                    <input type="text" id="filter-patent" autocomplete="off" placeholder="Patente…" title="Filtrar por patente">
+                    <div id="filter-brand-container"></div>
+                    <div id="filter-color-container"></div>
+                    <div id="filter-type-container"></div>
+                    <span class="filter-separator">|</span>
+                    <button id="toggle-invalid-plates">Solo inválidas</button>
+                    <button id="invert-selection-button">Invertir Selección</button>
+                </div>
+                <div class="filter-row">
+                    <span class="filter-label">Desde</span>
+                    <input type="datetime-local" id="filter-start-date" autocomplete="off" title="Fecha y hora desde">
+                    <span class="filter-label">Hasta</span>
+                    <input type="datetime-local" id="filter-end-date" autocomplete="off" title="Fecha y hora hasta">
+                    <button class="time-preset-btn" data-preset="1h">Última hora</button>
+                    <button class="time-preset-btn" data-preset="24h">Últimas 24h</button>
+                    <button class="time-preset-btn" data-preset="7d">Últimos 7 días</button>
+                    <button id="clear-all-filters-button">Limpiar</button>
+                </div>
             </div>
 
             <div class="table-wrapper">
@@ -57,6 +63,7 @@
                         <th>Marca</th>
                         <th>Color</th>
                         <th>Tipo</th>
+                        <th>Locación</th>
                         <th>Confianza</th>
                         <th>Fecha y Hora</th>
                         <th>Acciones</th>
@@ -96,6 +103,6 @@
     </div>
 
     <meta name="app-base" content="{{ request.script_root }}">
-    <script src="{{ url_for('static', filename='script.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v=5"></script>
 </body>
 </html>
