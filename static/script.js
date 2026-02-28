@@ -374,13 +374,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Pagination ---
     function buildPageNumbers(current, total) {
-        // Always show first 2, last 2, and current ±1
+        // Show more pages before compacting:
+        // - first 5 pages
+        // - around current: previous 2 and next 5
+        // - last 3 pages
         const pages = new Set();
-        pages.add(1);
-        if (total > 1) pages.add(2);
-        if (total > 0) pages.add(total);
-        if (total > 1) pages.add(total - 1);
-        for (let i = current - 1; i <= current + 1; i++) {
+        for (let i = 1; i <= Math.min(5, total); i++) {
+            pages.add(i);
+        }
+        for (let i = Math.max(1, total - 2); i <= total; i++) {
+            pages.add(i);
+        }
+        for (let i = current - 2; i <= current + 5; i++) {
             if (i >= 1 && i <= total) pages.add(i);
         }
         const sorted = Array.from(pages).sort((a, b) => a - b);
@@ -547,7 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
             { label: 'Conf. promedio', value: (data.avg_confidence * 100).toFixed(1) + '%' },
             { label: 'Alta (\u226590%)', value: data.high_conf },
             { label: 'Media (70-90%)', value: data.mid_conf },
-            { label: 'Baja conf. (<70%)', value: data.low_confidence_count, cls: data.low_confidence_count > 0 ? 'low-conf' : '' },
+            { label: 'Baja conf. (<70%)', value: data.low_confidence_count },
         ];
 
         statsBar.appendChild(buildRow(row1));

@@ -117,11 +117,6 @@ h1 {
     color: #333;
 }
 
-.stats-bar .stat-value.low-conf {
-    color: #e67e00;
-    font-weight: 700;
-}
-
 /* Thumbnail strip */
 .thumbnail-strip {
     display: flex;
