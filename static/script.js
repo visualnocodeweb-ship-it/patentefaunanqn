@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const pageSize = 30;
     let totalPages = 0;
+    let totalFilteredCount = 0;
 
     // Filter state
     let currentPage = 1;
@@ -248,7 +249,9 @@ document.addEventListener('DOMContentLoaded', () => {
             location:    splitParam('location_filter'),
             startDate:   params.get('start_date_filter') || '',
             endDate:     params.get('end_date_filter') || '',
-            minConfidence: params.get('min_confidence_filter') || ''
+            minConfidence: params.get('min_confidence_filter') || '',
+            invalidPlatesOnly: params.get('invalid_plates_only') === 'true',
+            invertFilters: params.get('invert_filters') === 'true'
         };
     }
 
@@ -263,6 +266,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentStartDateFilter) params.set('start_date_filter', currentStartDateFilter);
         if (currentEndDateFilter) params.set('end_date_filter', currentEndDateFilter);
         if (currentMinConfidenceFilter) params.set('min_confidence_filter', currentMinConfidenceFilter);
+        if (currentInvalidPlatesOnly) params.set('invalid_plates_only', 'true');
+        if (currentInvertFilters) params.set('invert_filters', 'true');
         const qs = params.toString();
         const newUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
         history.replaceState(null, '', newUrl);
@@ -279,12 +284,21 @@ document.addEventListener('DOMContentLoaded', () => {
     currentStartDateFilter = urlState.startDate;
     currentEndDateFilter   = urlState.endDate;
     currentMinConfidenceFilter = urlState.minConfidence;
+    currentInvalidPlatesOnly = urlState.invalidPlatesOnly;
+    currentInvertFilters = urlState.invertFilters;
 
     // Populate inputs from URL state (dates are UTC in URL, local in input)
     filterPatent.value    = currentPatentFilter;
     filterStartDate.value = currentStartDateFilter ? toLocalISODateTime(new Date(currentStartDateFilter + 'Z')).slice(0, 16) : '';
     filterEndDate.value   = currentEndDateFilter ? toLocalISODateTime(new Date(currentEndDateFilter + 'Z')).slice(0, 16) : '';
     // Dropdowns: setSelected() is called after populate() in fetchAndInitDropdowns below
+    // Restore toggle-button visual states from URL
+    if (currentInvalidPlatesOnly) {
+        document.getElementById('toggle-invalid-plates').classList.add('active');
+    }
+    if (currentInvertFilters) {
+        document.getElementById('invert-selection-button').classList.add('active');
+    }
 
     // --- Read all filter inputs into state ---
     function readAllFilters() {
@@ -315,6 +329,14 @@ document.addEventListener('DOMContentLoaded', () => {
             ? '<span class="edited-badge" title="Editado manualmente">✎</span>'
             : '';
         row.innerHTML = `
+            <td>
+                <input type="checkbox" class="row-checkbox"
+                       data-event-id="${escapeHtml(item.event_id)}"
+                       data-plate="${escapeHtml(item.plate_text || '')}"
+                       data-brand="${escapeHtml(item.vehicle_brand || '')}"
+                       data-color="${escapeHtml(item.vehicle_color || '')}"
+                       data-type="${escapeHtml(item.vehicle_type || '')}">
+            </td>
             <td>${item.sightings != null ? item.sightings : '-'}</td>
             <td>${editedBadge}${escapeHtml(item.plate_text) || 'No detectada'}</td>
             <td>${escapeHtml(item.vehicle_brand) || 'N/A'}</td>
@@ -324,13 +346,11 @@ document.addEventListener('DOMContentLoaded', () => {
             <td>${item.plate_confidence ? (item.plate_confidence * 100).toFixed(2) + '%' : 'N/A'}</td>
             <td>${new Date(item.created_at).toLocaleString()}</td>
             <td>
-                <button data-event-id="${escapeHtml(item.event_id)}" class="view-image-button">Ver Imágenes</button>
-                <button class="edit-row-btn"
-                        data-event-id="${escapeHtml(item.event_id)}"
-                        data-plate="${escapeHtml(item.plate_text || '')}"
-                        data-brand="${escapeHtml(item.vehicle_brand || '')}"
-                        data-color="${escapeHtml(item.vehicle_color || '')}"
-                        data-type="${escapeHtml(item.vehicle_type || '')}">✎</button>
+                ${item.thumbnail_id
+                    ? `<img src="${BASE}/api/browse_image/${escapeHtml(String(item.thumbnail_id))}"
+                           class="row-thumbnail" loading="lazy" alt="Vehículo"
+                           data-event-id="${escapeHtml(item.event_id)}">`
+                    : `<span class="no-image-label" data-event-id="${escapeHtml(item.event_id)}">Sin imagen</span>`}
             </td>
         `;
         return row;
@@ -344,9 +364,12 @@ document.addEventListener('DOMContentLoaded', () => {
             thead._widthsLocked = false;
         }
         patentTableBody.innerHTML = '';
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+        selectionActionBtn.style.display = 'none';
         if (results.length === 0) {
             const noResultsRow = document.createElement('tr');
-            noResultsRow.innerHTML = '<td colspan="9">No se encontraron patentes.</td>';
+            noResultsRow.innerHTML = '<td colspan="10">No se encontraron patentes.</td>';
             patentTableBody.appendChild(noResultsRow);
             return;
         }
@@ -429,7 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tableAbort) tableAbort.abort();
         tableAbort = new AbortController();
 
-        patentTableBody.innerHTML = '<tr><td colspan="9">Cargando patentes\u2026</td></tr>';
+        patentTableBody.innerHTML = '<tr><td colspan="10">Cargando patentes\u2026</td></tr>';
         let url = `${BASE}/api/all_patents?page=${currentPage}&page_size=${pageSize}`;
         if (currentPatentFilter) url += `&search_term=${encodeURIComponent(currentPatentFilter)}`;
         if (currentBrandFilter.length)    url += `&brand_filter=${encodeURIComponent(currentBrandFilter.join(','))}`;
@@ -452,11 +475,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             displayPatentTableResults(data.patents);
             totalPages = Math.ceil(data.total_count / pageSize);
+            totalFilteredCount = data.total_count;
             updatePaginationControls(data.total_count);
         } catch (error) {
             if (error.name === 'AbortError') return;
             console.error('Error fetching all patents:', error);
-            patentTableBody.innerHTML = '<tr><td colspan="9">Error al cargar las patentes.</td></tr>';
+            patentTableBody.innerHTML = '<tr><td colspan="10">Error al cargar las patentes.</td></tr>';
         }
     }
 
@@ -854,17 +878,10 @@ document.addEventListener('DOMContentLoaded', () => {
     patentTableBody.addEventListener('click', (event) => {
         const target = event.target;
 
-        // "Ver Imagen" button
-        if (target.classList.contains('view-image-button')) {
+        // Thumbnail click
+        if (target.classList.contains('row-thumbnail') || target.classList.contains('no-image-label')) {
             const eventId = target.dataset.eventId;
             if (eventId) openModalForEvent(eventId);
-            return;
-        }
-
-        // Edit row button
-        if (target.classList.contains('edit-row-btn')) {
-            const row = target.closest('tr');
-            enterEditMode(row, target);
             return;
         }
 
@@ -891,9 +908,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Store original HTML for cancel and original cell values for re-render after save
         row._originalHTML = row.innerHTML;
         row._eventId = eventId;
-        row._originalLocationCell = row.cells[5].innerHTML;
-        row._originalConfCell = row.cells[6].innerHTML;
-        row._originalDateCell = row.cells[7].innerHTML;
+        row._originalLocationCell = row.cells[6].innerHTML;
+        row._originalConfCell = row.cells[7].innerHTML;
+        row._originalDateCell = row.cells[8].innerHTML;
 
         // Read current values from data attributes (sourced from DB at table load time)
         const plate = editBtn.dataset.plate || '';
@@ -925,7 +942,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const cells = row.cells;
-        // cells: 0=sightings, 1=plate, 2=brand, 3=color, 4=type, 5=location, 6=conf, 7=date, 8=actions
+        // cells: 0=checkbox, 1=sightings, 2=plate, 3=brand, 4=color, 5=type, 6=location, 7=conf, 8=date, 9=thumbnail
 
         // Lock column widths on <th> to prevent layout shift when inputs replace text
         const thead = row.closest('table').querySelector('thead tr');
@@ -934,20 +951,20 @@ document.addEventListener('DOMContentLoaded', () => {
             thead._widthsLocked = true;
         }
 
-        // Plate cell (index 1)
-        cells[1].innerHTML = `<input type="text" class="edit-plate-input" value="${escapeHtml(plate)}" maxlength="10">`;
+        // Plate cell (index 2)
+        cells[2].innerHTML = `<input type="text" class="edit-plate-input" value="${escapeHtml(plate)}" maxlength="10">`;
 
-        // Brand cell (index 2)
-        cells[2].innerHTML = makeSelect(filterOptionsCache.brands, brand);
+        // Brand cell (index 3)
+        cells[3].innerHTML = makeSelect(filterOptionsCache.brands, brand);
 
-        // Color cell (index 3)
-        cells[3].innerHTML = makeSelect(filterOptionsCache.colors, color);
+        // Color cell (index 4)
+        cells[4].innerHTML = makeSelect(filterOptionsCache.colors, color);
 
-        // Type cell (index 4)
-        cells[4].innerHTML = makeSelect(filterOptionsCache.types, type);
+        // Type cell (index 5)
+        cells[5].innerHTML = makeSelect(filterOptionsCache.types, type);
 
-        // Actions cell (index 8) — stack vertically to avoid column overflow
-        cells[8].innerHTML = `<button class="save-row-btn">Guardar</button><button class="cancel-row-btn">Cancelar</button>`;
+        // Actions in thumbnail cell (index 9) — stack vertically to avoid column overflow
+        cells[9].innerHTML = `<button class="save-row-btn">Guardar</button><button class="cancel-row-btn">Cancelar</button>`;
 
         row.classList.add('row-editing');
     }
@@ -995,7 +1012,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.classList.remove('row-editing');
             const item = {
                 event_id: eventId,
-                sightings: row.cells[0].textContent,
+                sightings: row.cells[1].textContent,
                 plate_text: plateText,
                 vehicle_brand: vehicleBrand || null,
                 vehicle_color: vehicleColor || null,
@@ -1007,9 +1024,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Extract confidence and date from original row cells (unchanged)
             const newRow = createTableRow(item);
             // Preserve original confidence and date from stored cells
-            newRow.cells[5].innerHTML = row._originalLocationCell || newRow.cells[5].innerHTML;
-            newRow.cells[6].innerHTML = row._originalConfCell || newRow.cells[6].innerHTML;
-            newRow.cells[7].innerHTML = row._originalDateCell || newRow.cells[7].innerHTML;
+            newRow.cells[6].innerHTML = row._originalLocationCell || newRow.cells[6].innerHTML;
+            newRow.cells[7].innerHTML = row._originalConfCell || newRow.cells[7].innerHTML;
+            newRow.cells[8].innerHTML = row._originalDateCell || newRow.cells[8].innerHTML;
             row.parentNode.replaceChild(newRow, row);
             // Unlock column widths
             const thead = newRow.closest('table').querySelector('thead tr');
@@ -1031,6 +1048,125 @@ document.addEventListener('DOMContentLoaded', () => {
         if (thead && thead._widthsLocked) {
             Array.from(thead.cells).forEach(th => { th.style.width = ''; });
             thead._widthsLocked = false;
+        }
+    }
+
+    // --- Checkbox selection + action button ---
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    const selectionActionBtn = document.getElementById('selection-action-btn');
+
+    selectAllCheckbox.addEventListener('change', () => {
+        const checkboxes = patentTableBody.querySelectorAll('.row-checkbox');
+        checkboxes.forEach(cb => { cb.checked = selectAllCheckbox.checked; });
+        updateSelectionAction();
+    });
+
+    patentTableBody.addEventListener('change', (event) => {
+        if (event.target.classList.contains('row-checkbox')) {
+            const all = patentTableBody.querySelectorAll('.row-checkbox');
+            const checked = patentTableBody.querySelectorAll('.row-checkbox:checked');
+            selectAllCheckbox.checked = all.length > 0 && checked.length === all.length;
+            selectAllCheckbox.indeterminate = checked.length > 0 && checked.length < all.length;
+            updateSelectionAction();
+        }
+    });
+
+    function updateSelectionAction() {
+        const checked = patentTableBody.querySelectorAll('.row-checkbox:checked');
+        if (checked.length === 0) {
+            selectionActionBtn.style.display = 'none';
+            selectionActionBtn.className = 'selection-action-btn';
+        } else if (checked.length === 1) {
+            selectionActionBtn.style.display = '';
+            selectionActionBtn.textContent = 'Editar';
+            selectionActionBtn.className = 'selection-action-btn action-edit';
+        } else {
+            selectionActionBtn.style.display = '';
+            selectionActionBtn.textContent = `Exportar CSV (${totalFilteredCount})`;
+            selectionActionBtn.className = 'selection-action-btn action-export';
+        }
+    }
+
+    selectionActionBtn.addEventListener('click', () => {
+        const checked = patentTableBody.querySelectorAll('.row-checkbox:checked');
+        if (checked.length === 1) {
+            const cb = checked[0];
+            const row = cb.closest('tr');
+            enterEditMode(row, cb);
+        } else if (checked.length >= 2) {
+            exportFilteredCSV();
+        }
+    });
+
+    function buildFilterQueryString() {
+        const parts = [];
+        if (currentPatentFilter) parts.push(`search_term=${encodeURIComponent(currentPatentFilter)}`);
+        if (currentBrandFilter.length) parts.push(`brand_filter=${encodeURIComponent(currentBrandFilter.join(','))}`);
+        if (currentColorFilter.length) parts.push(`color_filter=${encodeURIComponent(currentColorFilter.join(','))}`);
+        if (currentTypeFilter.length) parts.push(`type_filter=${encodeURIComponent(currentTypeFilter.join(','))}`);
+        if (currentLocationFilter.length) parts.push(`location_filter=${encodeURIComponent(currentLocationFilter.join(','))}`);
+        if (currentStartDateFilter) parts.push(`start_date_filter=${encodeURIComponent(currentStartDateFilter)}`);
+        if (currentEndDateFilter) parts.push(`end_date_filter=${encodeURIComponent(currentEndDateFilter)}`);
+        if (currentMinConfidenceFilter) parts.push(`min_confidence_filter=${encodeURIComponent(currentMinConfidenceFilter / 100)}`);
+        if (currentInvalidPlatesOnly) parts.push('invalid_plates_only=true');
+        if (currentInvertFilters) parts.push('invert_filters=true');
+        return parts.join('&');
+    }
+
+    async function exportFilteredCSV() {
+        const btn = selectionActionBtn;
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Exportando…';
+
+        try {
+            const allItems = [];
+            let page = 1;
+            const batchSize = 100;
+            const qs = buildFilterQueryString();
+
+            while (true) {
+                const url = `${BASE}/api/all_patents?page=${page}&page_size=${batchSize}${qs ? '&' + qs : ''}`;
+                const resp = await fetch(url);
+                if (handle401(resp)) return;
+                const data = await resp.json();
+                allItems.push(...data.patents);
+                if (allItems.length >= data.total_count || data.patents.length < batchSize) break;
+                page++;
+            }
+
+            const headers = ['Patente', 'Marca', 'Color', 'Tipo', 'Locación', 'Confianza', 'Fecha y Hora'];
+            const csvRows = [headers.join(',')];
+            allItems.forEach(item => {
+                const conf = item.plate_confidence ? (item.plate_confidence * 100).toFixed(2) + '%' : 'N/A';
+                const date = item.created_at ? new Date(item.created_at).toLocaleString() : '';
+                const vals = [
+                    item.plate_text || 'No detectada',
+                    item.vehicle_brand || 'N/A',
+                    item.vehicle_color || 'N/A',
+                    item.vehicle_type || 'N/A',
+                    item.location || 'N/A',
+                    conf,
+                    date
+                ].map(v => `"${String(v).replace(/"/g, '""')}"`);
+                csvRows.push(vals.join(','));
+            });
+
+            const bom = '\uFEFF';
+            const blob = new Blob([bom + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const today = new Date().toISOString().slice(0, 10);
+            a.href = blobUrl;
+            a.download = `patentes_${today}.csv`;
+            a.click();
+            URL.revokeObjectURL(blobUrl);
+        } catch (e) {
+            console.error('Error exporting CSV:', e);
+            alert('Error al exportar CSV.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
         }
     }
 

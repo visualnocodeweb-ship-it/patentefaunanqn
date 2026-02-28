@@ -50,6 +50,7 @@
                     <button class="time-preset-btn" data-preset="1h">Última hora</button>
                     <button class="time-preset-btn" data-preset="24h">Últimas 24h</button>
                     <button class="time-preset-btn" data-preset="7d">Últimos 7 días</button>
+                    <button id="selection-action-btn" class="selection-action-btn" style="display:none;"></button>
                     <button id="clear-all-filters-button">Limpiar</button>
                 </div>
             </div>
@@ -58,6 +59,7 @@
             <table id="patent-table">
                 <thead>
                     <tr>
+                        <th><input type="checkbox" id="select-all-checkbox"></th>
                         <th title="Avistamientos">#</th>
                         <th>Patente</th>
                         <th>Marca</th>
@@ -66,7 +68,7 @@
                         <th>Locación</th>
                         <th>Confianza</th>
                         <th>Fecha y Hora</th>
-                        <th>Acciones</th>
+                        <th>Imagen</th>
                     </tr>
                 </thead>
                 <tbody>
