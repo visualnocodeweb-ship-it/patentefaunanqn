@@ -33,28 +33,41 @@ jobs:
   deploy:
     runs-on: self-hosted
     needs: test
+    env:
+      DB_HOST: ${{ secrets.DB_HOST }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      LOGIN_USER: ${{ secrets.LOGIN_USER }}
+      LOGIN_PASSWORD: ${{ secrets.LOGIN_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install production dependencies
-        run: /opt/patentefaunanqn/venv/bin/pip install -q -r requirements.txt
+      - name: Build images
+        run: docker compose build --no-cache
 
-      - name: Sync application files
+      - name: Deploy services
+        run: docker compose up -d --remove-orphans --force-recreate
+
+      - name: Wait for healthy
+        shell: bash
         run: |
-          rsync -rl --delete --no-perms --no-owner --no-group --omit-dir-times \
-            --exclude='.git/' \
-            --exclude='venv/' \
-            --exclude='.env' \
-            --exclude='__pycache__/' \
-            $GITHUB_WORKSPACE/ /opt/patentefaunanqn/
+          timeout=120
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            health="$(docker inspect -f '{{.State.Health.Status}}' patentefaunanqn 2>/dev/null || true)"
+            if [ "$health" = "healthy" ]; then
+              curl -f http://localhost:5100/health
+              exit 0
+            fi
+            sleep 5
+            elapsed=$((elapsed + 5))
+          done
+          docker compose ps || true
+          docker compose logs --tail 200 || true
+          exit 1
 
-      - name: Restart service
-        run: sudo systemctl restart patentefaunanqn
-
-      - name: Health check
-        run: |
-          sleep 4
-          curl -sf http://127.0.0.1:5100/health | grep '"status":"ok"' || {
-            journalctl -u patentefaunanqn -n 30 --no-pager
-            exit 1
-          }
+      - name: Cleanup old images
+        if: success()
+        run: docker image prune -f --filter "until=168h" || true

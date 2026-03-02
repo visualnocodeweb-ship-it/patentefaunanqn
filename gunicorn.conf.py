@@ -15,8 +15,8 @@ accesslog = "-"   # stdout
 errorlog = "-"    # stderr
 loglevel = "info"
 
-# Bind (Render.com sets PORT; fall back to 10000)
-bind = f"0.0.0.0:{os.environ.get('PORT', '10000')}"
+# Bind (PORT defaults to 5000 for Docker; override via env if needed)
+bind = f"0.0.0.0:{os.environ.get('PORT', '5000')}"
 
 
 def post_fork(server, worker):
